@@ -239,6 +239,7 @@ def executar_camada2(db: Database, asof: date, cfg: dict, run_id: str,
         if "antes_k" not in memo:
             memo["antes_k"] = _chaves(db)
         antes_k = memo["antes_k"]
+        memo.get("guarda", lambda: None)()  # $out substitui a collection: confirma o lease antes
         db.trecho_bucket_diario.aggregate(estagios(p), allowDiskUse=True)
         depois_k = _chaves(db)
         sairam = antes_k - depois_k

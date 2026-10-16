@@ -18,5 +18,6 @@ recomendação de produção sem a validação do time de operação.
 | 10 | Retenção da raw | TTL 200 dias | `config.ttlRawDias` + `make up` | Em produção a raw pode ter TTL curto (ex.: 30 dias): os buckets carregam o histórico. Trade-off: depois do TTL não dá para reprocessar com outro grão (ex.: blocos de 15 min) nem trocar a regra 3. |
 | 11 | Retenção dos buckets | TTL 190 dias | `config.ttlBucketDias` | Precisa ser ≥ janela + margem; abaixo de 180 a camada 2 perde dias. |
 | 12 | Estatística | média simples, outliers incluídos | camada 2 | `$median`/`$percentile` (MongoDB 7.0+) existem, mas **não se compõem** a partir de soma/contagem: exigiriam guardar as amostras (ou um sketch) no bucket, ou recalcular sobre a raw. Alternativas componíveis: média aparada por limites fixos, soma de quadrados para desvio-padrão. |
-| 13 | Limpeza da camada 2 | `merge_runid` | `config.modoLimpezaCamada2` | Ver README, seção "Dois modos de limpeza". |
+| 13 | Limpeza da camada 2 | `out` (medido 4× mais rápido no Atlas) | `config.modoLimpezaCamada2` | `merge_runid` se a collection precisar ser shardada. Ver README, "Dois modos de limpeza". |
+| 15 | Duas camadas ou MV simples | duas camadas | arquitetura | No benchmark, `$out` direto da raw (36,5 s) foi mais rápido que o job incremental. Duas camadas só compensam com raw de retenção curta, correção de atrasos por dia ou troca de turno sem reprocessar. |
 | 14 | Janela | 180 dias, D-1 a D-180 | `config.janelaDias` | Janela maior aumenta n por chave e dilui mudanças recentes de trânsito. |

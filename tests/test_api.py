@@ -53,7 +53,7 @@ def test_job_badges_e_pipeline_executado(cli):
     nomes = {b["badge"] for b in r["badges"]}
     assert {"$merge", "Bucket Pattern", "Computed Pattern", "$dateTrunc com timezone",
             "unique index", "TTL", "$jsonSchema"} <= nomes
-    assert "$out" not in nomes
+    assert "$out" in nomes  # default da camada 2 (medido mais rápido no Atlas)
     assert "$merge" in r["mongosh"]["camada1"] and "whenMatched" in r["mongosh"]["camada1"]
 
 

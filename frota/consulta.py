@@ -67,7 +67,7 @@ def fallback(db: Database, origem: str, destino: str, tipo_veiculo: str,
              instante: str | datetime, asof: str | None = None,
              min_amostras: int | None = None, cfg: dict | None = None,
              com_explain: bool = False, incluir_docs: bool = False) -> dict:
-    cfg = cfg or config_mod.ler(db)
+    cfg = cfg or config_mod.vigente_em_cache(db)
     minimo = int(min_amostras or cfg["minAmostras"])
     filtro = {"origem": origem, "destino": destino, "tipoVeiculo": tipo_veiculo}
 
@@ -76,13 +76,13 @@ def fallback(db: Database, origem: str, destino: str, tipo_veiculo: str,
     docs = list(db[COLECAO].find(filtro, {"_id": 0}).sort("atualizadoEm", -1))
     latencia_ms = (time.perf_counter() - t0) * 1000
     aviso_config = None
-    if docs and docs[0]["configVersao"] != cfg["versao"]:
+    if docs:
         # a chave tem que ser derivada com os turnos/regra que geraram o agregado
-        anterior = config_mod.versao(db, docs[0]["configVersao"])
-        if anterior:
+        da_versao = config_mod.versao(db, docs[0]["configVersao"])
+        if da_versao and docs[0]["configVersao"] != cfg["versao"]:
             aviso_config = (f"agregado calculado com config v{docs[0]['configVersao']}; a vigente é "
                             f"v{cfg['versao']} (rode a camada 2 para aplicá-la)")
-            cfg = anterior
+        cfg = da_versao or cfg
     tz = cfg["timezone"]
     inst = _instante(instante, tz)
     chave = derivar_chave(inst, cfg)

@@ -125,7 +125,7 @@ turno (configurável; decisão do cliente).
 { _id: "ativa", versao: 1, timezone: "America/Sao_Paulo", janelaDias: 180,
   turnos: [ { codigo: "M", inicioHora: 6, fimHora: 12 }, { codigo: "T", inicioHora: 12, fimHora: 18 },
             { codigo: "N", inicioHora: 18, fimHora: 6 } ],
-  regraNoite: "dia_civil", kReprocessamento: 3, minAmostras: 5, modoLimpezaCamada2: "merge_runid",
+  regraNoite: "dia_civil", kReprocessamento: 3, minAmostras: 5, modoLimpezaCamada2: "out",
   ttlRawDias: 200, ttlBucketDias: 190 }
 
 { runId: "2026-10-16T20:51:12Z-509f", asOf: "2026-10-20", camada: "todas", status: "ok",
@@ -212,20 +212,20 @@ idempotência falharia. Buckets de dias reprocessados que deixaram de existir na
 
 ### Dois modos de limpeza da camada 2
 
-| | `merge_runid` (default) | `out` |
+| | `merge_runid` | `out` |
 |---|---|---|
-| Escrita | `$merge` on chave única, `replace` | `$out` substitui a collection |
+| Escrita | `$merge` on chave única, `replace` | `$out` substitui a collection (**default**) |
 | Chaves que saíram da janela | `deleteMany({runId ≠ atual})` depois do merge | deixam de existir na troca |
 | Visibilidade intermediária | entre o fim do `$merge` e o `deleteMany`, as chaves órfãs continuam visíveis (as válidas já estão atualizadas) | troca atômica: leitores veem a versão antiga ou a nova |
 | Índices/validator | preservados | preservados (testado: `test_avanco_de_janela_remove_obsoletos[out]`) |
 | Restrições | — | destino não pode ser shardado; reescreve tudo a cada run |
 | Custo por run | regrava todas as chaves da janela (`replace`), na collection existente | grava uma collection temporária, constrói os índices e troca |
 
-**Recomendação:** `merge_runid`. Funciona com a collection shardada (se um dia for
-preciso), mantém as chaves válidas sempre presentes e a janela de órfãos é curta e
-inofensiva para o fallback (um órfão é uma média de um dia da semana/turno que só tinha
-dados no dia que saiu). `$out` é a escolha se o requisito for "nenhum leitor vê estado
-intermediário".
+**Recomendação (com base no benchmark): `out`**, o default. No Atlas M30 a camada 2 levou
+43 s com `$out` contra ~170 s com `$merge` + runId, e a troca é atômica para leitores
+(testado: leituras contínuas durante o job nunca ficaram sem resposta). `merge_runid` é
+a escolha se a collection precisar ser shardada; sua janela de órfãos é curta e
+inofensiva para o fallback.
 
 ### Hierarquia de fallback (proposta para validação com o cliente)
 
@@ -398,49 +398,57 @@ console nem overflow horizontal. `bash _shared/ui/check-ui.sh`: cópia de
 
 ## Benchmark
 
-`make bench` (perfil `escala`, banco `frota_eta_bench`). Medido em 2026-10-16 num
-**Apple M4 Pro**, MongoDB **8.0.34** em Docker/colima com **2 vCPU e 3,8 GiB** (cache
-WiredTiger 1,4 GiB), replica set de 1 nó. Dados brutos em `docs/bench-results.json`.
+`make bench` (perfil `escala`: 1.860.697 observações, 2.000 trechos, 1.500 veículos, 200
+dias) nos dois alvos, em 2026-10-16. Dados brutos em `docs/bench-results-atlas.json` e
+`docs/bench-results-local.json`.
 
-| Medida | Resultado |
-|---|---|
-| Seed `escala` | 1.860.697 observações na raw (+2.059 pendentes de ingestão) em 85,7 s · 21.743 docs/s |
-| Carga inicial, camada 1 (180 dias) | 1.675.892 observações → 1.589.918 buckets em **169,9 s** (tentativa bem-sucedida) |
-| Carga inicial, camada 2 | 1.589.918 buckets → 164.007 médias em **21,4 s** |
-| Carga inicial, total | 419,3 s — inclui uma 1ª tentativa da camada 1 que falhou por erro transitório e foi refeita pelo retry (a versão medida ainda não registrava o erro; hoje `job_runs` guarda `tentativas` e `errosTransitorios`) |
-| Job incremental (avançar 1 dia) | 13 dias reprocessados (k = 3 + 10 dias com atraso detectado pelo watermark), 120.158 observações lidas: camada 1 **42,4 s**, camada 2 **26,5 s** (1.589.791 buckets lidos), total **68,9 s** |
-| Recálculo completo direto da raw (`$group` sobre 180 dias + `$out`) | 163.999 grupos em **12,7 s** |
-| Consulta de fallback (500 chaves aleatórias) | p50 **1,73 ms** · p95 **3,10 ms** (≤ 21 docs, IXSCAN) |
-| Mesma consulta on the fly na raw | p50 **4,57 ms** · p95 **14,62 ms** |
+- **Atlas**: cluster compartilhado do portfólio, M30, AWS São Paulo, MongoDB 9.0.4,
+  replica set de 3 nós com `w: majority`. Cliente a ~255 ms de ping (p50).
+- **Local**: Apple M4 Pro, MongoDB 8.0.34 em Docker com 2 vCPU / 3,8 GiB, 1 nó.
 
-| Storage (`collStats`) | docs | dados | storage | índices | bytes/doc |
-|---|---:|---:|---:|---:|---:|
-| `trecho_observacoes` | 1.869.938 | 423,9 MB | 254,4 MB | 621,5 MB | 237 |
-| `trecho_bucket_diario` | 1.598.769 | 405,1 MB | 283,2 MB | 428,5 MB | 265 |
-| `trecho_media_historica` | 163.999 | 51,3 MB | 43,8 MB | 34,8 MB | 327 |
+| Medida | Atlas M30 | Local |
+|---|---:|---:|
+| Carga inicial, camada 1 (1,68 M obs → 1,59 M buckets, `$merge`) | 376,8 s | 169,9 s |
+| Carga inicial, camada 2 (→ 164.007 médias, `$merge` + runId) | 35,6 s | 21,4 s |
+| Job incremental ao avançar 1 dia (k = 3 + 10 dias com atraso, 120.158 obs) — camada 1 | 135,2 s | 42,4 s |
+| idem — camada 2 com `$merge` + runId (1,59 M buckets lidos) | 174,5 s | 26,5 s |
+| Job em regime (só k = 3 dias, 27.441 obs) — camada 1 | 31,0 s | não medido |
+| idem — camada 2 com `$merge` + runId | 167,8 s | não medido |
+| **Camada 2 com `$out`** | **42,9 s** | não medido |
+| Recálculo completo direto da raw (`$group` 180 dias + `$out`) | 36,5 s | 12,7 s |
+| Fallback no servidor (`executionTimeMillis`, 100 chaves) | p50 0 ms · p95 0 ms · máx 7 ms | — |
+| Mesma pergunta na raw, no servidor | p50 3 ms · p95 4 ms · máx 6 ms (191 docs examinados p50, 395 p95, 736 máx) | — |
+| Fallback no cliente (500 chaves) | ≈ 1 ping (269 ms p50 vs ping 263 ms) | p50 1,73 ms · p95 3,10 ms |
+| Raw on the fly no cliente | p50 261 ms | p50 4,57 ms · p95 14,62 ms |
 
-**Leitura honesta dos números.**
+| Storage no Atlas (`collStats`) | docs | dados | storage | índices |
+|---|---:|---:|---:|---:|
+| `trecho_observacoes` | 1.869.938 | 423,9 MB | 127,1 MB | 387,5 MB |
+| `trecho_bucket_diario` | 1.598.769 | 405,1 MB | 175,5 MB | 230,7 MB |
+| `trecho_media_historica` | 163.999 | 51,3 MB | 15,6 MB | 19,1 MB |
 
-- **Neste hardware e volume, o job incremental (68,9 s) foi mais lento que recalcular
-  tudo direto da raw com `$out` (12,7 s).** O custo dominante é o `$merge`, que escreve
-  documento a documento (upsert por chave única), enquanto o `$out` grava em lote numa
-  collection nova. A camada 2 em modo `merge_runid` regrava todas as ~164 mil chaves a
-  cada run.
-- O grão hora quase não compacta neste gerador: 1,68 M observações → 1,59 M buckets.
-  Cada trecho × tipo é percorrido menos de uma vez por hora por dia.
-- O ganho medido está na **consulta**: o fallback é 2,6× mais rápido no p50 e 4,7× no p95
-  que a mesma pergunta na raw, examina no máximo 21 documentos e não cresce com o
-  histórico do trecho.
-- O que o desenho incremental entrega aqui não é velocidade de refresh, e sim: leitura
-  limitada da raw por run (permite raw com TTL curto), correção de atrasos por dia,
-  mudança de turno sem tocar a raw e independência de a raw ainda existir.
+**O que os números dizem (e o que mudou por causa deles).**
 
-**Não medido** (próximos passos para decidir o desenho com o cliente): camada 2 em modo
-`out`; um run incremental em regime (só k dias, sem atrasos); camada 1 em grão de turno;
-o mesmo bench num tier Atlas; recálculo completo com volume real do cliente. Com esses
-números na mão, uma alternativa legítima é **materializar direto da raw com `$out`
-agendado** (a MV com COMPLETE refresh) e manter os buckets só se a retenção curta da raw
-for requisito.
+1. **`$merge` documento a documento é o custo dominante**, e no Atlas (3 nós, `majority`)
+   ele pesa mais: a camada 2 com `$merge` + runId levou ~170 s; com `$out`, 43 s. Por isso
+   o **default da camada 2 passou a ser `out`** (a especificação original sugeria
+   `merge_runid`). `merge_runid` continua disponível para coleção shardada.
+2. **Recalcular tudo da raw com `$out` (36,5 s no Atlas) foi mais rápido que o job
+   incremental com `$merge`** neste volume. O desenho em duas camadas não ganha em tempo
+   de refresh aqui; ganha em retenção (raw com TTL curto), correção de atrasos por dia e
+   troca de turno sem tocar a raw. Se esses requisitos não existirem, uma MV com COMPLETE
+   refresh (`$out` agendado direto da raw) é uma alternativa legítima e mais simples.
+3. **A consulta é o ganho medido**: 0 ms no servidor, 21 documentos, independe do
+   histórico do trecho. Na raw são 3 ms e 191–736 documentos examinados — e esse número
+   cresce com o volume e com a janela.
+4. Visto do cliente, o fallback custa uma ida e volta. Antes ele lia a config a cada
+   consulta (2 idas e voltas); agora usa cache de 10 s da config vigente e deriva a chave
+   pela versão gravada no próprio agregado.
+5. O grão hora quase não compacta neste gerador (1,68 M → 1,59 M); um grão de turno
+   compactaria mais e perderia a troca de turno sem reprocessar.
+
+Não medido: camada 1 com grão de turno; tier Atlas dedicado (o cluster é compartilhado
+com outras PoVs, o que pode ter afetado tempos); volume real do cliente.
 
 ## Limitações
 
@@ -448,8 +456,8 @@ for requisito.
   nada com sharding nem com volume real de cliente. Os perfis `small`/`escala` são
   tamanhos de laboratório. O cluster é compartilhado com outras PoVs: números de tempo
   podem ter sofrido interferência.
-- O job incremental foi mais lento que o recálculo completo da raw no benchmark local
-  (ver "Leitura honesta dos números").
+- O job incremental foi mais lento que o recálculo completo da raw no benchmark (ver
+  "O que os números dizem").
 - A camada 2 recalcula a janela inteira a partir dos buckets a cada run (não é
   incremental). É barato porque lê buckets, não raw; um modo incremental (somar o dia que
   entra, subtrair o que sai) é possível porque soma e contagem são componíveis, mas não

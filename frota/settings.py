@@ -46,7 +46,7 @@ def config_inicial() -> dict:
         "regraNoite": os.getenv("FROTA_REGRA_NOITE", "dia_civil"),
         "kReprocessamento": int(os.getenv("FROTA_K_REPROCESSAMENTO", "3")),
         "minAmostras": int(os.getenv("FROTA_MIN_AMOSTRAS", "5")),
-        "modoLimpezaCamada2": os.getenv("FROTA_MODO_LIMPEZA_CAMADA2", "merge_runid"),
+        "modoLimpezaCamada2": os.getenv("FROTA_MODO_LIMPEZA_CAMADA2", "out"),
         "ttlRawDias": int(os.getenv("FROTA_TTL_RAW_DIAS", "200")),
         "ttlBucketDias": int(os.getenv("FROTA_TTL_BUCKET_DIAS", "190")),
     }

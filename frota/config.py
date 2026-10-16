@@ -34,14 +34,38 @@ def garantir(db: Database) -> dict:
 
 
 def _arquivar(db: Database, cfg: dict) -> None:
+    _VERSOES.pop((db.name, cfg["versao"]), None)
     db.config_versoes.replace_one({"_id": cfg["versao"]}, {**cfg, "_id": cfg["versao"]},
                                   upsert=True)
 
 
+_VERSOES: dict[tuple[str, int], dict] = {}
+_VIGENTE: dict[str, tuple[float, dict]] = {}
+VIGENTE_TTL_S = 10.0
+
+
 def versao(db: Database, numero: int) -> dict | None:
-    """Config exatamente como estava na versão `numero` (para interpretar um agregado)."""
-    doc = db.config_versoes.find_one({"_id": numero})
-    return {**doc, "_id": "ativa"} if doc else None
+    """Config exatamente como estava na versão `numero` (imutável: cache sem expiração)."""
+    chave = (db.name, numero)
+    if chave not in _VERSOES:
+        doc = db.config_versoes.find_one({"_id": numero})
+        if not doc:
+            return None
+        _VERSOES[chave] = {**doc, "_id": "ativa"}
+    return _VERSOES[chave]
+
+
+def vigente_em_cache(db: Database) -> dict:
+    """Config vigente com cache de 10 s, para a consulta de fallback (caminho quente).
+
+    Seguro porque o fallback deriva dow/turno pela versão gravada no próprio agregado;
+    da vigente ele só usa `minAmostras` e o fuso para responder sem histórico.
+    """
+    import time as _t
+    agora = _t.monotonic()
+    if db.name not in _VIGENTE or agora - _VIGENTE[db.name][0] > VIGENTE_TTL_S:
+        _VIGENTE[db.name] = (agora, ler(db))
+    return _VIGENTE[db.name][1]
 
 
 def ler(db: Database) -> dict:
@@ -64,4 +88,5 @@ def atualizar(db: Database, mudancas: dict) -> dict:
     if r.matched_count == 0:
         raise ValueError("config alterada por outra pessoa ao mesmo tempo; recarregue e tente de novo")
     _arquivar(db, novo)
+    _VIGENTE.pop(db.name, None)
     return ler(db)
