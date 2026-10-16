@@ -1,0 +1,306 @@
+{
+  "descricao": "Camada 2 com asOf 2026-10-16, janela [2026-04-19T03:00Z, 2026-10-16T03:00Z), limpeza merge_runid.",
+  "colecao": "trecho_bucket_diario",
+  "asOf": "2026-10-16",
+  "estagios": [
+    {
+      "comentario": "Recorte da janela móvel sobre o dia local do bucket: [início, fim) semiaberto, sem $lte. Usa o índice { dataLocal: 1 }. O dia de hoje nunca entra porque fim = 00:00 local de asOf.",
+      "estagio": {
+        "$match": {
+          "dataLocal": {
+            "$gte": {
+              "$date": "2026-04-19T03:00:00Z"
+            },
+            "$lt": {
+              "$date": "2026-10-16T03:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Deriva turno da hora local (gerado de config.turnos v1) e dow conforme regraNoite = dia_civil. Nenhum dado da raw é relido.",
+      "estagio": {
+        "$set": {
+          "turno": {
+            "$switch": {
+              "branches": [
+                {
+                  "case": {
+                    "$and": [
+                      {
+                        "$gte": [
+                          "$hora",
+                          6
+                        ]
+                      },
+                      {
+                        "$lt": [
+                          "$hora",
+                          12
+                        ]
+                      }
+                    ]
+                  },
+                  "then": "M"
+                },
+                {
+                  "case": {
+                    "$and": [
+                      {
+                        "$gte": [
+                          "$hora",
+                          12
+                        ]
+                      },
+                      {
+                        "$lt": [
+                          "$hora",
+                          18
+                        ]
+                      }
+                    ]
+                  },
+                  "then": "T"
+                }
+              ],
+              "default": "N"
+            }
+          },
+          "dow": "$dowCivil"
+        }
+      }
+    },
+    {
+      "comentario": "Chave sem data: 'toda sexta à noite' = { dow: 6, turno: 'N' } soma todas as sextas da janela. Soma de somas e de contagens (Computed Pattern).",
+      "estagio": {
+        "$group": {
+          "_id": {
+            "origem": "$origem",
+            "destino": "$destino",
+            "tipoVeiculo": "$tipoVeiculo",
+            "dow": "$dow",
+            "turno": "$turno"
+          },
+          "somaMin": {
+            "$sum": "$somaMin"
+          },
+          "somaKm": {
+            "$sum": "$somaKm"
+          },
+          "n": {
+            "$sum": "$n"
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Média = soma / contagem, calculada uma vez aqui e não na consulta. Grava a janela efetiva, asOf e a versão da config para auditoria.",
+      "estagio": {
+        "$project": {
+          "_id": 0,
+          "origem": "$_id.origem",
+          "destino": "$_id.destino",
+          "tipoVeiculo": "$_id.tipoVeiculo",
+          "dow": "$_id.dow",
+          "turno": "$_id.turno",
+          "somaMin": 1,
+          "somaKm": 1,
+          "n": 1,
+          "mediaMin": {
+            "$divide": [
+              "$somaMin",
+              "$n"
+            ]
+          },
+          "mediaKm": {
+            "$divide": [
+              "$somaKm",
+              "$n"
+            ]
+          },
+          "janelaInicio": {
+            "$literal": {
+              "$date": "2026-04-19T03:00:00Z"
+            }
+          },
+          "janelaFim": {
+            "$literal": {
+              "$date": "2026-10-16T03:00:00Z"
+            }
+          },
+          "asOf": {
+            "$literal": "2026-10-16"
+          },
+          "configVersao": {
+            "$literal": 1
+          },
+          "runId": {
+            "$literal": "<runId>"
+          },
+          "atualizadoEm": "$$NOW"
+        }
+      }
+    },
+    {
+      "comentario": "merge_runid: upsert pela chave única do agregado (replace = idempotente). Chaves que saíram da janela são apagadas depois por runId ≠ atual.",
+      "estagio": {
+        "$merge": {
+          "into": "trecho_media_historica",
+          "on": [
+            "origem",
+            "destino",
+            "tipoVeiculo",
+            "dow",
+            "turno"
+          ],
+          "whenMatched": "replace",
+          "whenNotMatched": "insert"
+        }
+      }
+    }
+  ],
+  "pipeline": [
+    {
+      "$match": {
+        "dataLocal": {
+          "$gte": {
+            "$date": "2026-04-19T03:00:00Z"
+          },
+          "$lt": {
+            "$date": "2026-10-16T03:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "$set": {
+        "turno": {
+          "$switch": {
+            "branches": [
+              {
+                "case": {
+                  "$and": [
+                    {
+                      "$gte": [
+                        "$hora",
+                        6
+                      ]
+                    },
+                    {
+                      "$lt": [
+                        "$hora",
+                        12
+                      ]
+                    }
+                  ]
+                },
+                "then": "M"
+              },
+              {
+                "case": {
+                  "$and": [
+                    {
+                      "$gte": [
+                        "$hora",
+                        12
+                      ]
+                    },
+                    {
+                      "$lt": [
+                        "$hora",
+                        18
+                      ]
+                    }
+                  ]
+                },
+                "then": "T"
+              }
+            ],
+            "default": "N"
+          }
+        },
+        "dow": "$dowCivil"
+      }
+    },
+    {
+      "$group": {
+        "_id": {
+          "origem": "$origem",
+          "destino": "$destino",
+          "tipoVeiculo": "$tipoVeiculo",
+          "dow": "$dow",
+          "turno": "$turno"
+        },
+        "somaMin": {
+          "$sum": "$somaMin"
+        },
+        "somaKm": {
+          "$sum": "$somaKm"
+        },
+        "n": {
+          "$sum": "$n"
+        }
+      }
+    },
+    {
+      "$project": {
+        "_id": 0,
+        "origem": "$_id.origem",
+        "destino": "$_id.destino",
+        "tipoVeiculo": "$_id.tipoVeiculo",
+        "dow": "$_id.dow",
+        "turno": "$_id.turno",
+        "somaMin": 1,
+        "somaKm": 1,
+        "n": 1,
+        "mediaMin": {
+          "$divide": [
+            "$somaMin",
+            "$n"
+          ]
+        },
+        "mediaKm": {
+          "$divide": [
+            "$somaKm",
+            "$n"
+          ]
+        },
+        "janelaInicio": {
+          "$literal": {
+            "$date": "2026-04-19T03:00:00Z"
+          }
+        },
+        "janelaFim": {
+          "$literal": {
+            "$date": "2026-10-16T03:00:00Z"
+          }
+        },
+        "asOf": {
+          "$literal": "2026-10-16"
+        },
+        "configVersao": {
+          "$literal": 1
+        },
+        "runId": {
+          "$literal": "<runId>"
+        },
+        "atualizadoEm": "$$NOW"
+      }
+    },
+    {
+      "$merge": {
+        "into": "trecho_media_historica",
+        "on": [
+          "origem",
+          "destino",
+          "tipoVeiculo",
+          "dow",
+          "turno"
+        ],
+        "whenMatched": "replace",
+        "whenNotMatched": "insert"
+      }
+    }
+  ]
+}

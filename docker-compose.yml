@@ -1,0 +1,29 @@
+# MongoDB 8.0 como replica set de 1 nó: mesma topologia lógica de produção
+# (oplog, majority, $merge/$out com write concern), tudo compatível com Atlas.
+# A porta 27027 é exclusiva desta POV e o membro se anuncia com a mesma porta,
+# então o driver no host descobre o primário sem directConnection.
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: frota-eta-mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27027"]
+    ports:
+      - "127.0.0.1:27027:27027"
+    volumes:
+      - frota_eta_data:/data/db
+    healthcheck:
+      # Inicia o replica set na primeira execução e fica saudável quando há PRIMARY.
+      test:
+        - CMD
+        - mongosh
+        - --port
+        - "27027"
+        - --quiet
+        - --eval
+        - "try { rs.status().myState === 1 ? 0 : quit(1) } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27027'}]}); quit(1) }"
+      interval: 3s
+      timeout: 10s
+      retries: 40
+      start_period: 5s
+volumes:
+  frota_eta_data:
