@@ -24,7 +24,7 @@ from pymongo.errors import (AutoReconnect, ConnectionFailure, DuplicateKeyError,
 
 from . import config as config_mod
 from .janela import dias, hoje_local, inicio_dia, janela, parse_asof
-from .pipelines import camada1, camada2, comentados, estagios
+from .pipelines import camada1, camada2, comentados, estagios, simples
 
 UTC = timezone.utc
 LOCK_ID = "materializacao"
@@ -117,9 +117,28 @@ def _intervalos(dias_proc: list[date], tz: str) -> list[tuple[datetime, datetime
     return [(inicio_dia(a, tz), inicio_dia(b + timedelta(days=1), tz)) for a, b in saida]
 
 
-def ultimo_run_ok(db: Database, camadas: tuple[str, ...]) -> dict | None:
-    return db.job_runs.find_one({"status": "ok", "camada": {"$in": list(camadas)}},
-                                sort=[("iniciadoEm", -1)])
+def ultimo_run_ok(db: Database, camadas: tuple[str, ...],
+                  assinatura: str | None = None) -> dict | None:
+    """Último run ok que executou a camada 1 (runs do modo simples não contam).
+
+    Com `assinatura`, só runs que gravaram buckets com o mesmo grão/config: depois de
+    alternar entre grãos, cada coleção de buckets só confia no próprio histórico."""
+    filtro = {"status": "ok", "camada": {"$in": list(camadas)},
+              "stats.camada1": {"$exists": True}}
+    if assinatura is not None:
+        filtro["stats.camada1.assinaturaGrao"] = assinatura
+    return db.job_runs.find_one(filtro, sort=[("iniciadoEm", -1)])
+
+
+def assinatura_grao(cfg: dict) -> str:
+    """O que fica gravado nos buckets. Se mudar, a camada 1 refaz a janela inteira."""
+    import json as _json
+    g = cfg.get("granularidadeBucket", "turno")
+    partes = {"granularidade": g, "timezone": cfg["timezone"]}
+    if g == "turno":
+        partes.update(turnos=cfg["turnos"], regraNoite=cfg["regraNoite"],
+                      incluirDow=cfg.get("incluirDow", True))
+    return _json.dumps(partes, sort_keys=True)
 
 
 def planejar_camada1(db: Database, asof: date, cfg: dict) -> dict:
@@ -129,11 +148,18 @@ def planejar_camada1(db: Database, asof: date, cfg: dict) -> dict:
     dia_ini = asof - timedelta(days=cfg["janelaDias"])
     topo = db.trecho_observacoes.find_one({}, {"ingeridoEm": 1}, sort=[("ingeridoEm", -1)])
     wm_novo = topo["ingeridoEm"] if topo else None
-    ultimo = ultimo_run_ok(db, ("1", "todas"))
+    ultimo = ultimo_run_ok(db, ("1", "todas"), assinatura_grao(cfg))
     plano = {"watermarkNovo": wm_novo, "atrasadosDetectados": 0,
              "atrasadosForaDaJanelaK": 0, "diasAtrasados": []}
+    cobertura = ((ultimo or {}).get("stats") or {}).get("camada1", {}).get("coberturaDesde")
+    if ultimo is not None and (cobertura is None or parse_asof(cobertura) > dia_ini):
+        # o run anterior não garante buckets completos desde o início da janela
+        # (histórico antigo, buckets apagados, janela aumentada): não confiar nele
+        ultimo = None
     if ultimo is None:
-        plano["modo"] = "carga_inicial"
+        # nenhum run gravou buckets com este grão/config: janela inteira
+        houve_outro = ultimo_run_ok(db, ("1", "todas")) is not None
+        plano["modo"] = "recarga_por_config" if houve_outro else "carga_inicial"
         base = dias(dia_ini, asof)
     else:
         plano["modo"] = "incremental"
@@ -159,6 +185,9 @@ def planejar_camada1(db: Database, asof: date, cfg: dict) -> dict:
                     plano["diasAtrasados"].append(d)
     plano["dias"] = sorted(set(base) | set(plano["diasAtrasados"]))
     plano["diasAtrasados"] = sorted(plano["diasAtrasados"])
+    # carga/recarga cobre a janela inteira; incremental herda a cobertura do run anterior
+    plano["coberturaDesde"] = (dia_ini if plano["modo"] != "incremental"
+                               else max(parse_asof(cobertura), dia_ini)).isoformat()
     return plano
 
 
@@ -179,14 +208,20 @@ def executar_camada1(db: Database, asof: date, cfg: dict, run_id: str,
              "diasAtrasados": [d.isoformat() for d in plano["diasAtrasados"]],
              "atrasadosDetectados": plano["atrasadosDetectados"],
              "atrasadosForaDaJanelaK": plano["atrasadosForaDaJanelaK"],
-             "watermarkIngeridoEm": plano["watermarkNovo"]}
+             "watermarkIngeridoEm": plano["watermarkNovo"],
+             "assinaturaGrao": assinatura_grao(cfg),
+             "coberturaDesde": plano["coberturaDesde"],
+             "granularidade": cfg.get("granularidadeBucket", "turno")}
+    por_turno = stats["granularidade"] == "turno"
     if dias_proc:
-        buckets = db.trecho_bucket_diario
+        buckets = db[camada1.COLECAO_TURNO if por_turno else camada1.COLECAO_DESTINO]
         no_recorte = {"dataLocal": {"$in": instantes}}
         if "antes" not in memo:
             memo["antes"] = buckets.count_documents(no_recorte)
         antes = memo["antes"]
-        p = camada1.pipeline(_intervalos(dias_proc, tz), run_id, tz)
+        intervalos = _intervalos(dias_proc, tz)
+        p = (camada1.pipeline_turno(intervalos, run_id, cfg) if por_turno
+             else camada1.pipeline(intervalos, run_id, tz))
         stats["pipeline"] = comentados(p)
         db.trecho_observacoes.aggregate(estagios(p), allowDiskUse=True)
         novos = list(buckets.aggregate([
@@ -222,12 +257,13 @@ def executar_camada2(db: Database, asof: date, cfg: dict, run_id: str,
     media = db.trecho_media_historica
     modo = cfg["modoLimpezaCamada2"]
     p = camada2.pipeline(ji, jf, asof.isoformat(), cfg, run_id)
-    lidos = db.trecho_bucket_diario.count_documents({"dataLocal": {"$gte": ji, "$lt": jf}})
+    fonte = db[camada2.colecao_origem(cfg)]
+    lidos = fonte.count_documents({"dataLocal": {"$gte": ji, "$lt": jf}})
     if modo == "merge_runid":
         if "antes" not in memo:
             memo["antes"] = media.count_documents({})
         antes = memo["antes"]
-        db.trecho_bucket_diario.aggregate(estagios(p), allowDiskUse=True)
+        fonte.aggregate(estagios(p), allowDiskUse=True)
         total = media.count_documents({"runId": run_id})
         orfaos = {"runId": {"$ne": run_id}}
         amostra = list(media.find(orfaos, {c: 1 for c in CHAVE} | {"_id": 0}).limit(50))
@@ -240,14 +276,40 @@ def executar_camada2(db: Database, asof: date, cfg: dict, run_id: str,
             memo["antes_k"] = _chaves(db)
         antes_k = memo["antes_k"]
         memo.get("guarda", lambda: None)()  # $out substitui a collection: confirma o lease antes
-        db.trecho_bucket_diario.aggregate(estagios(p), allowDiskUse=True)
+        fonte.aggregate(estagios(p), allowDiskUse=True)
         depois_k = _chaves(db)
         sairam = antes_k - depois_k
         amostra = [dict(zip(CHAVE, k)) for k in sorted(sairam)[:50]]
         removidos, atualizados = len(sairam), len(antes_k & depois_k)
         inseridos = len(depois_k - antes_k)
-    return {"modo": modo, "lidos": lidos, "inseridos": inseridos, "atualizados": atualizados,
+    return {"modo": modo, "fonte": fonte.name, "lidos": lidos, "inseridos": inseridos,
+            "atualizados": atualizados,
             "removidos": removidos, "removidosAmostra": amostra,
+            "janelaInicio": ji, "janelaFim": jf, "configVersao": cfg["versao"],
+            "pipeline": comentados(p),
+            "duracaoMs": round((time.perf_counter() - t0) * 1000, 1)}
+
+
+# ---- modo simples -----------------------------------------------------------
+
+def executar_simples(db: Database, asof: date, cfg: dict, run_id: str,
+                     memo: dict | None = None) -> dict:
+    """raw → média num pipeline só, janela inteira, `$out`."""
+    memo = {} if memo is None else memo
+    t0 = time.perf_counter()
+    ji, jf = janela(asof, cfg)
+    p = simples.pipeline(ji, jf, asof.isoformat(), cfg, run_id)
+    if "antes_k" not in memo:
+        memo["antes_k"] = _chaves(db)
+    antes_k = memo["antes_k"]
+    lidos = db.trecho_observacoes.count_documents({"observadoEm": {"$gte": ji, "$lt": jf}})
+    memo.get("guarda", lambda: None)()  # $out substitui a collection: confirma o lease antes
+    db.trecho_observacoes.aggregate(estagios(p), allowDiskUse=True)
+    depois_k = _chaves(db)
+    sairam = antes_k - depois_k
+    return {"modo": "simples", "lidos": lidos, "inseridos": len(depois_k - antes_k),
+            "atualizados": len(antes_k & depois_k), "removidos": len(sairam),
+            "removidosAmostra": [dict(zip(CHAVE, k)) for k in sorted(sairam)[:50]],
             "janelaInicio": ji, "janelaFim": jf, "configVersao": cfg["versao"],
             "pipeline": comentados(p),
             "duracaoMs": round((time.perf_counter() - t0) * 1000, 1)}
@@ -255,16 +317,37 @@ def executar_camada2(db: Database, asof: date, cfg: dict, run_id: str,
 
 # ---- orquestração -----------------------------------------------------------
 
+EXECUCAO = {"modoMaterializacao", "granularidadeBucket", "modoLimpezaCamada2"}
+
+
 def materializar(db: Database, asof: str | date | None = None, camada: str = "todas",
-                 owner: str | None = None, lease_s: int = 1800) -> dict:
+                 owner: str | None = None, lease_s: int = 1800,
+                 execucao: dict | None = None) -> dict:
+    """`execucao` troca só COMO se calcula (modo, grão, limpeza) sem gravar a config: o
+    agregado resultante é o mesmo (teste `test_tres_modos_mesmo_agregado`)."""
     cfg = config_mod.ler(db)
+    if execucao:
+        if set(execucao) - EXECUCAO:
+            raise ValueError(f"execucao aceita só {sorted(EXECUCAO)}")
+        cfg = {**cfg, **execucao}
+        config_mod.validar(cfg)
     asof_d = parse_asof(asof) if asof else hoje_local(cfg["timezone"])
     camada = str(camada)
     if camada not in ("1", "2", "todas"):
         raise ValueError("camada deve ser 1, 2 ou todas")
+    modo_mat = cfg.get("modoMaterializacao", "simples")
+    if modo_mat == "simples" and camada == "1":
+        raise ValueError("modo simples não tem camada 1: rode camada 2 ou todas")
+    if modo_mat == "incremental" and camada == "2":
+        ultimo = ultimo_run_ok(db, ("1", "todas"))
+        gravada = ((ultimo or {}).get("stats") or {}).get("camada1", {}).get("assinaturaGrao")
+        if gravada != assinatura_grao(cfg):
+            raise ValueError("os buckets foram gravados com outra config/grão (ou não existem): "
+                             "rode camada 1 ou todas")
     owner = owner or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:6]}"
     run_id = novo_run_id()
-    run = {"runId": run_id, "asOf": asof_d.isoformat(), "camada": camada, "status": "running",
+    run = {"runId": run_id, "asOf": asof_d.isoformat(), "camada": camada,
+           "modoMaterializacao": modo_mat, "status": "running",
            "owner": owner, "iniciadoEm": _agora(), "finalizadoEm": None, "stats": {},
            "erro": None, "configVersao": cfg["versao"]}
     db.job_runs.insert_one(run)
@@ -277,8 +360,10 @@ def materializar(db: Database, asof: str | date | None = None, camada: str = "to
         raise
     try:
         stats: dict = {}
-        for nome, fn in (("camada1", executar_camada1), ("camada2", executar_camada2)):
-            if camada not in (nome[-1], "todas"):
+        etapas = ((("simples", executar_simples),) if modo_mat == "simples" else
+                  (("camada1", executar_camada1), ("camada2", executar_camada2)))
+        for nome, fn in etapas:
+            if nome != "simples" and camada not in (nome[-1], "todas"):
                 continue
             t0 = time.perf_counter()
             renovar_lock(db, owner, lease_s)
@@ -288,7 +373,7 @@ def materializar(db: Database, asof: str | date | None = None, camada: str = "to
             st["errosTransitorios"] = erros
             st["duracaoTotalMs"] = round((time.perf_counter() - t0) * 1000, 1)
             stats[nome] = st
-        partes = [stats[c] for c in ("camada1", "camada2") if c in stats]
+        partes = [stats[c] for c in ("simples", "camada1", "camada2") if c in stats]
         resumo = {campo: sum(s[campo] for s in partes)
                   for campo in ("inseridos", "atualizados", "removidos")}
         resumo["lidos"] = partes[0]["lidos"]

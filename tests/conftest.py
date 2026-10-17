@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# A suíte histórica valida o modo incremental com grão hora (o mais exigente: buckets,
+# watermark, k, duas limpezas). Os modos simples e turno têm testes em test_modos.py.
+os.environ.setdefault("FROTA_MODO_MATERIALIZACAO", "incremental")
+os.environ.setdefault("FROTA_GRANULARIDADE_BUCKET", "hora")
 
 from frota import settings  # noqa: E402
 from frota.bootstrap import bootstrap  # noqa: E402

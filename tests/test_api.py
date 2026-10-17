@@ -83,3 +83,33 @@ def test_config_invalida_400(cli):
 
 def test_atrasado_sem_campos_400(cli):
     assert cli.post("/api/atrasado", json={"origem": "BASE-001"}).status_code == 400
+
+
+def test_comparar_modos_mesmo_agregado_sem_mudar_a_config(cli, db):
+    versao = cli.get("/api/config").json()["versao"]
+    r = cli.post("/api/comparar-modos", json={"asOf": "2026-10-16"}).json()
+    assert r["mesmoAgregado"] is True
+    assert r["desenhos"]["simples"]["documentos"] == r["desenhos"]["incremental_turno"]["documentos"] > 0
+    assert len(r["desenhos"]["incremental_turno"]["runs"]) == 2
+    assert "$out" in {b["badge"] for b in r["desenhos"]["simples"]["badges"]}
+    assert cli.get("/api/config").json()["versao"] == versao
+
+
+def test_config_em_turno_refaz_as_duas_camadas(cli):
+    cli.post("/api/config", json={"mudancas": {"modoMaterializacao": "incremental",
+                                               "granularidadeBucket": "turno"}})
+    cli.post("/api/job", json={"asOf": "2026-10-16"})
+    r = cli.post("/api/config", json={"mudancas": {"regraNoite": "dia_operacional"},
+                                      "rerodarCamada2": True, "asOf": "2026-10-16"}).json()
+    assert r["provaRawIntacta"]["desenho"] == "incremental/turno"
+    assert r["provaRawIntacta"]["camada1Executada"] is True
+    assert r["run"]["stats"]["camada1"]["modo"] == "recarga_por_config"
+
+
+def test_camada2_sozinha_com_turno_desatualizado_e_recusada(cli):
+    cli.post("/api/config", json={"mudancas": {"modoMaterializacao": "incremental",
+                                               "granularidadeBucket": "turno"}})
+    cli.post("/api/job", json={"asOf": "2026-10-16"})
+    cli.post("/api/config", json={"mudancas": {"regraNoite": "dia_operacional"}})
+    r = cli.post("/api/job", json={"asOf": "2026-10-16", "camada": "2"})
+    assert r.status_code == 400 and "outra config" in r.json()["erro"]

@@ -11,7 +11,7 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-ABAS = ["Consulta ETA", "Raw vs Materializado", "Job / $merge", "Janela móvel", "Config",
+ABAS = ["Consulta ETA", "Raw vs Materializado", "Simples × Incremental", "Job e janela", "Config",
         "Por baixo do capô"]
 
 ap = argparse.ArgumentParser()
@@ -35,16 +35,20 @@ with sync_playwright() as p:
             if aba == "Raw vs Materializado":
                 pg.get_by_role("button", name="Executar as duas").click()
                 pg.wait_for_selector(".veredito", timeout=60000)
-            if a.acoes and w == 1440 and aba == "Job / $merge":
+            if a.acoes and w == 1440 and aba == "Job e janela":
                 pg.get_by_role("button", name="Rodar job").click()
                 pg.wait_for_selector(".run", timeout=240000)
                 pg.get_by_role("button", name="Injetar").click()
                 pg.wait_for_timeout(800)
                 pg.get_by_role("button", name="Rodar job").click()
                 pg.wait_for_selector(".run", timeout=240000)
-            if a.acoes and w == 1440 and aba == "Janela móvel":
                 pg.get_by_role("button", name="Avançar 1 dia").click()
-                pg.wait_for_selector(".run", timeout=240000)
+                pg.wait_for_selector('button:has-text("Avançar 1 dia"):not([disabled])', timeout=240000)
+            if a.acoes and w == 1440 and aba == "Simples × Incremental":
+                pg.get_by_role("button", name="Rodar os dois desenhos").click()
+                pg.wait_for_selector(".veredito", timeout=240000)
+                if "mesmo agregado" not in pg.locator(".veredito").inner_text():
+                    falhas.append("simples × incremental: agregados diferentes")
             larg = pg.evaluate("document.documentElement.scrollWidth")
             if larg > w + 1:
                 falhas.append(f"{w}px {aba}: overflow horizontal ({larg}px)")

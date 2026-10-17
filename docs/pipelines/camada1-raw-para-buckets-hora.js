@@ -25,8 +25,9 @@ db.trecho_observacoes.aggregate([
       maxMin: { $max: "$tempoMin" }
     }
   },
-  // Achata a chave e deriva dowCivil (1=domingo … 7=sábado) do dia local. $$NOW só para
-  // auditoria; janela e dias vêm por parâmetro.
+  // Achata a chave e deriva dowCivil (1=domingo … 7=sábado) do dia local. Somas
+  // arredondadas a 6 casas: $sum de doubles depende da ordem de leitura, e sem isso dois
+  // runs sobre a mesma raw diferem em ~1e-14. $$NOW só para auditoria.
   {
     $project: {
       _id: 0,
@@ -36,8 +37,8 @@ db.trecho_observacoes.aggregate([
       dataLocal: "$_id.dataLocal",
       hora: "$_id.hora",
       dowCivil: { $dayOfWeek: { date: "$_id.dataLocal", timezone: "America/Sao_Paulo" } },
-      somaMin: 1,
-      somaKm: 1,
+      somaMin: { $round: [ "$somaMin", 6 ] },
+      somaKm: { $round: [ "$somaKm", 6 ] },
       n: 1,
       minMin: 1,
       maxMin: 1,

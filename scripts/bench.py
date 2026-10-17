@@ -107,45 +107,34 @@ if __name__ == "__main__":
             db[c].delete_many({})
         res["seed"] = {"reaproveitado": True,
                        "observacoes": db.trecho_observacoes.estimated_document_count()}
-    if True:
-        print("2/6 carga inicial (camada 1 com 180 dias + camada 2) ...", flush=True)
-        run, s = cronometro(materializar, db)
-        res["cargaInicial"] = {"segundos": round(s, 1),
-                               "tentativasCamada1": run["stats"]["camada1"]["tentativas"],
-                               "errosTransitorios": run["stats"]["camada1"]["errosTransitorios"],
-                               "camada1Ms": run["stats"]["camada1"]["duracaoMs"],
-                               "camada2Ms": run["stats"]["camada2"]["duracaoMs"],
-                               "buckets": run["stats"]["camada1"]["inseridos"],
-                               "medias": run["stats"]["camada2"]["inseridos"]}
-    cfg = config_mod.ler(db)
+    def medir(nome, rotulo, execucao, asof=None):
+        print(rotulo, flush=True)
+        run, seg = cronometro(materializar, db, asof, execucao=execucao)
+        st = run["stats"]
+        res[nome] = {"segundos": round(seg, 1), "modo": st.get("camada1", {}).get("modo", "simples"),
+                     "etapas": {k: {c: v.get(c) for c in ("lidos", "inseridos", "atualizados",
+                                                          "removidos", "duracaoMs", "tentativas")}
+                                | ({"dias": len(v["diasReprocessados"])} if "diasReprocessados" in v else {})
+                                for k, v in st.items() if isinstance(v, dict)},
+                     "rawLidos": st.get("simples", st.get("camada1", {})).get("lidos")}
+        return run
 
-    print("3/6 job incremental (avançar 1 dia: gera o dia, camada 1 com k dias + camada 2) ...",
-          flush=True)
+    SIMPLES = {"modoMaterializacao": "simples", "modoLimpezaCamada2": "out"}
+    TURNO = {"modoMaterializacao": "incremental", "granularidadeBucket": "turno",
+             "modoLimpezaCamada2": "out"}
+    medir("simples", "2/6 simples: raw → média, janela inteira, $out", SIMPLES)
+    medir("cargaTurno", "2b/6 incremental por turno: carga inicial", TURNO)
+    medir("jobRegimeTurno", "2c/6 incremental por turno: run diário em regime (k dias)", TURNO)
+    config_mod.atualizar(db, TURNO)
+    print("3/6 avançar 1 dia (gera o dia, atrasados chegam) com incremental por turno ...", flush=True)
     p = avancar(db, 1)[0]
-    c1, c2 = p["run"]["stats"]["camada1"], p["run"]["stats"]["camada2"]
-    res["jobIncremental"] = {"asOf": p["asOf"], "k": cfg["kReprocessamento"],
-                             "diasReprocessados": len(c1["diasReprocessados"]),
-                             "rawLidos": c1["lidos"], "camada1Ms": c1["duracaoMs"],
-                             "bucketsLidosCamada2": c2["lidos"], "camada2Ms": c2["duracaoMs"],
-                             "totalMs": round(c1["duracaoMs"] + c2["duracaoMs"], 1)}
+    st = p["run"]["stats"]
+    res["avancoTurno"] = {"asOf": p["asOf"], "dias": len(st["camada1"]["diasReprocessados"]),
+                          "rawLidos": st["camada1"]["lidos"], "camada1Ms": st["camada1"]["duracaoMs"],
+                          "camada2Ms": st["camada2"]["duracaoMs"]}
     asof = asof_atual(db)
-    print("3b/6 job em regime (mesmo asOf, só k dias) e camada 2 em modo out ...", flush=True)
-    run, s = cronometro(materializar, db, asof)
-    res["jobRegime"] = {"segundos": round(s, 1),
-                        "diasReprocessados": len(run["stats"]["camada1"]["diasReprocessados"]),
-                        "rawLidos": run["stats"]["camada1"]["lidos"],
-                        "camada1Ms": run["stats"]["camada1"]["duracaoMs"],
-                        "camada2Ms": run["stats"]["camada2"]["duracaoMs"]}
-    config_mod.atualizar(db, {"modoLimpezaCamada2": "out"})
-    run, s = cronometro(materializar, db, asof, "2")
-    res["camada2Out"] = {"segundos": round(s, 1), "camada2Ms": run["stats"]["camada2"]["duracaoMs"]}
-    config_mod.atualizar(db, {"modoLimpezaCamada2": "merge_runid"})
+    medir("simplesAposAvanco", "3b/6 simples no mesmo asOf avançado", SIMPLES, asof)
     cfg = config_mod.ler(db)
-
-    print("4/6 recálculo completo direto da raw (180 dias) ...", flush=True)
-    grupos, s = cronometro(recalculo_completo, db, asof, cfg)
-    res["recalculoCompletoRaw"] = {"segundos": round(s, 2), "grupos": grupos}
-    db.bench_recalculo_completo.drop()
 
     print(f"5/6 latência: {a.consultas} consultas de fallback e on-the-fly ...", flush=True)
     chaves = list(db.trecho_media_historica.aggregate([
@@ -196,9 +185,10 @@ if __name__ == "__main__":
 
     print("6/6 storage (collStats) ...", flush=True)
     res["storage"] = {n: storage(db, n) for n in
-                      ("trecho_observacoes", "trecho_bucket_diario", "trecho_media_historica")}
+                      ("trecho_observacoes", "trecho_bucket_turno", "trecho_media_historica")}
 
-    destino = os.path.join(RAIZ, "docs", f"bench-results-{settings.ALVO}.json")
+    sufixo = "" if a.profile == "escala" else f"-{a.profile}"
+    destino = os.path.join(RAIZ, "docs", f"bench-results-{settings.ALVO}{sufixo}.json")
     with open(destino, "w") as f:
         json.dump(res, f, ensure_ascii=False, indent=2, default=str)
     print(json.dumps({k: v for k, v in res.items() if k != "latencia"}, ensure_ascii=False,

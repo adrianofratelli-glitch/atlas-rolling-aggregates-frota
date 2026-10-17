@@ -7,6 +7,12 @@ services:
     image: mongo:8.0
     container_name: frota-eta-mongo
     command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27027"]
+    # Limites recomendados pelo MongoDB para produção. Sem isto o default do Docker
+    # (1024 arquivos) estoura: cada $out cria e descarta uma collection temporária com
+    # índices, e o WiredTiger entra em pânico com "Too many open files" (visto nos testes).
+    ulimits:
+      nofile: { soft: 64000, hard: 64000 }
+      nproc: 64000
     ports:
       - "127.0.0.1:27027:27027"
     volumes:

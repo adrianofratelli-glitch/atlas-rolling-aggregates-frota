@@ -8,22 +8,6 @@ db.trecho_bucket_diario.aggregate([
       dataLocal: { $gte: ISODate("2026-04-19T03:00:00.000Z"), $lt: ISODate("2026-10-16T03:00:00.000Z") }
     }
   },
-  // Deriva turno da hora local (gerado de config.turnos v1) e dow conforme regraNoite =
-  // dia_civil. Nenhum dado da raw é relido.
-  {
-    $set: {
-      turno: {
-        $switch: {
-          branches: [
-            { case: { $and: [ { $gte: [ "$hora", 6 ] }, { $lt: [ "$hora", 12 ] } ] }, then: "M" },
-            { case: { $and: [ { $gte: [ "$hora", 12 ] }, { $lt: [ "$hora", 18 ] } ] }, then: "T" }
-          ],
-          default: "N"
-        }
-      },
-      dow: "$dowCivil"
-    }
-  },
   // Chave sem data: 'toda sexta à noite' = { dow: 6, turno: 'N' } soma todas as sextas da
   // janela. Soma de somas e de contagens (Computed Pattern).
   {
@@ -40,8 +24,8 @@ db.trecho_bucket_diario.aggregate([
       n: { $sum: "$n" }
     }
   },
-  // Média = soma / contagem, calculada uma vez aqui e não na consulta. Grava a janela
-  // efetiva, asOf e a versão da config para auditoria.
+  // Média = soma / contagem, calculada uma vez aqui e não na consulta (somas arredondadas
+  // a 6 casas, como na camada 1). Grava janela, asOf e versão da config.
   {
     $project: {
       _id: 0,
@@ -50,11 +34,11 @@ db.trecho_bucket_diario.aggregate([
       tipoVeiculo: "$_id.tipoVeiculo",
       dow: "$_id.dow",
       turno: "$_id.turno",
-      somaMin: 1,
-      somaKm: 1,
+      somaMin: { $round: [ "$somaMin", 6 ] },
+      somaKm: { $round: [ "$somaKm", 6 ] },
       n: 1,
-      mediaMin: { $divide: [ "$somaMin", "$n" ] },
-      mediaKm: { $divide: [ "$somaKm", "$n" ] },
+      mediaMin: { $divide: [ { $round: [ "$somaMin", 6 ] }, "$n" ] },
+      mediaKm: { $divide: [ { $round: [ "$somaKm", 6 ] }, "$n" ] },
       janelaInicio: { $literal: ISODate("2026-04-19T03:00:00.000Z") },
       janelaFim: { $literal: ISODate("2026-10-16T03:00:00.000Z") },
       asOf: { $literal: "2026-10-16" },

@@ -18,7 +18,7 @@ from frota import settings
 from frota.janela import inicio_dia, janela, parse_asof
 from frota.mongosh import para_mongosh, pipeline_mongosh
 from frota.pipelines import comentados, estagios
-from frota.pipelines import camada1, camada2, raw_onthefly
+from frota.pipelines import camada1, camada2, raw_onthefly, simples
 
 ASOF = "2026-10-16"
 OUT = Path(__file__).resolve().parent.parent / "docs" / "pipelines"
@@ -40,13 +40,27 @@ if __name__ == "__main__":
     tz = base["timezone"]
     ji, jf = janela(d, base)
     k = base["kReprocessamento"]
-    salvar("camada1-raw-para-buckets",
+    base = {**base, "versao": 1}
+    salvar("simples-raw-para-media",
+           f"Modo simples (default) com asOf {ASOF}: janela inteira [{ji:%Y-%m-%dT%H:%MZ}, "
+           f"{jf:%Y-%m-%dT%H:%MZ}) → média por dow × turno, $out.", "trecho_observacoes",
+           simples.pipeline(ji, jf, ASOF, base, "<runId>"))
+    salvar("simples-raw-para-media-so-turno",
+           "Modo simples só por turno (incluirDow = false): ≤ 3 docs por trecho/veículo.",
+           "trecho_observacoes",
+           simples.pipeline(ji, jf, ASOF, {**base, "incluirDow": False}, "<runId>"))
+    salvar("camada1-raw-para-buckets-turno",
+           f"Incremental, camada 1 por turno com asOf {ASOF}: D-{k}…D-1, $merge replace.",
+           "trecho_observacoes",
+           camada1.pipeline_turno([(inicio_dia(d - timedelta(days=k), tz), inicio_dia(d, tz))],
+                                  "<runId>", base))
+    salvar("camada1-raw-para-buckets-hora",
            f"Camada 1 com asOf {ASOF}: reprocessa D-{k}…D-1 (dias locais), $merge replace.",
            "trecho_observacoes",
            camada1.pipeline([(inicio_dia(d - timedelta(days=k), tz), inicio_dia(d, tz))],
                             "<runId>", tz))
     for modo in ("merge_runid", "out"):
-        cfg = {**base, "modoLimpezaCamada2": modo}
+        cfg = {**base, "modoLimpezaCamada2": modo, "granularidadeBucket": "turno"}
         salvar(f"camada2-buckets-para-media-{modo}",
                f"Camada 2 com asOf {ASOF}, janela [{ji:%Y-%m-%dT%H:%MZ}, {jf:%Y-%m-%dT%H:%MZ}), "
                f"limpeza {modo}.", "trecho_bucket_diario",

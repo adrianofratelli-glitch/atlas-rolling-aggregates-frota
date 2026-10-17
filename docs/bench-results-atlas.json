@@ -1,7 +1,7 @@
 {
   "perfil": "escala",
   "alvo": "atlas",
-  "medidoEm": "2026-10-16T22:27:26.255016+00:00",
+  "medidoEm": "2026-10-16T23:57:26.090133+00:00",
   "hardware": {
     "so": "Darwin 27.0.0",
     "maquina": "arm64",
@@ -21,60 +21,111 @@
     "trechos": 2000,
     "observacoes": 1860697,
     "pendentesDeIngestao": 2059,
-    "segundos": 289.7,
-    "docsPorSegundo": 6430
+    "segundos": 287.0,
+    "docsPorSegundo": 6491
   },
-  "cargaInicial": {
-    "segundos": 414.3,
-    "tentativasCamada1": 1,
-    "errosTransitorios": [],
-    "camada1Ms": 376784.6,
-    "camada2Ms": 35555.4,
-    "buckets": 1589918,
-    "medias": 164007
+  "simples": {
+    "segundos": 48.2,
+    "modo": "simples",
+    "etapas": {
+      "simples": {
+        "lidos": 1675892,
+        "inseridos": 164007,
+        "atualizados": 0,
+        "removidos": 0,
+        "duracaoMs": 46492.4,
+        "tentativas": 1
+      }
+    },
+    "rawLidos": 1675892
   },
-  "jobIncremental": {
+  "cargaTurno": {
+    "segundos": 350.9,
+    "modo": "carga_inicial",
+    "etapas": {
+      "camada1": {
+        "lidos": 1675892,
+        "inseridos": 1292417,
+        "atualizados": 0,
+        "removidos": 0,
+        "duracaoMs": 309889.6,
+        "tentativas": 1,
+        "dias": 180
+      },
+      "camada2": {
+        "lidos": 1292417,
+        "inseridos": 0,
+        "atualizados": 164007,
+        "removidos": 0,
+        "duracaoMs": 39032.2,
+        "tentativas": 1
+      }
+    },
+    "rawLidos": 1675892
+  },
+  "jobRegimeTurno": {
+    "segundos": 77.0,
+    "modo": "incremental",
+    "etapas": {
+      "camada1": {
+        "lidos": 27350,
+        "inseridos": 0,
+        "atualizados": 21188,
+        "removidos": 0,
+        "duracaoMs": 27852.4,
+        "tentativas": 1,
+        "dias": 3
+      },
+      "camada2": {
+        "lidos": 1292417,
+        "inseridos": 0,
+        "atualizados": 164007,
+        "removidos": 0,
+        "duracaoMs": 47034.6,
+        "tentativas": 1
+      }
+    },
+    "rawLidos": 27350
+  },
+  "avancoTurno": {
     "asOf": "2026-10-17",
-    "k": 3,
-    "diasReprocessados": 13,
+    "dias": 13,
     "rawLidos": 120158,
-    "camada1Ms": 135176.9,
-    "bucketsLidosCamada2": 1589791,
-    "camada2Ms": 174507.8,
-    "totalMs": 309684.7
+    "camada1Ms": 116662.9,
+    "camada2Ms": 39811.4
   },
-  "jobRegime": {
-    "segundos": 200.7,
-    "diasReprocessados": 3,
-    "rawLidos": 27441,
-    "camada1Ms": 30951.7,
-    "camada2Ms": 167819.2
-  },
-  "camada2Out": {
-    "segundos": 44.5,
-    "camada2Ms": 42867.1
-  },
-  "recalculoCompletoRaw": {
-    "segundos": 36.5,
-    "grupos": 163999
+  "simplesAposAvanco": {
+    "segundos": 49.4,
+    "modo": "simples",
+    "etapas": {
+      "simples": {
+        "lidos": 1675741,
+        "inseridos": 0,
+        "atualizados": 163999,
+        "removidos": 0,
+        "duracaoMs": 47676.4,
+        "tentativas": 1
+      }
+    },
+    "rawLidos": 1675741
   },
   "latencia": {
     "consultas": 500,
     "fallbackMs": {
-      "p50": 535.92,
-      "p95": 613.93,
-      "media": 548.19
+      "p50": 283.21,
+      "p95": 308.86,
+      "media": 298.34
     },
     "onTheFlyRawMs": {
-      "p50": 261.46,
-      "p95": 358.73,
-      "media": 276.9
+      "p50": 269.34,
+      "p95": 299.51,
+      "media": 274.93
     },
     "servidorMs (explain, 100 chaves)": {
       "fallback": {
         "p50": 0,
         "p95": 0,
-        "max": 7
+        "max": 0
       },
       "onTheFlyRaw": {
         "p50": 3,
@@ -82,14 +133,14 @@
         "max": 6
       },
       "docsExaminadosRaw": {
-        "p50": 191,
-        "p95": 395,
-        "max": 736
+        "p50": 167,
+        "p95": 374,
+        "max": 744
       }
     },
     "pingMs": {
-      "p50": 255.2,
-      "p95": 277.0
+      "p50": 262.1,
+      "p95": 266.0
     },
     "explainFallbackExemplo": {
       "estagioVencedor": "FETCH → IXSCAN chave_media_unica",
@@ -97,9 +148,9 @@
       "indices": [
         "chave_media_unica"
       ],
-      "totalKeysExamined": 21,
-      "totalDocsExamined": 21,
-      "nReturned": 21,
+      "totalKeysExamined": 20,
+      "totalDocsExamined": 20,
+      "nReturned": 20,
       "executionTimeMillis": 0
     },
     "explainRawExemplo": {
@@ -108,32 +159,32 @@
       "indices": [
         "origem_1_destino_1_tipoVeiculo_1_observadoEm_1"
       ],
-      "totalKeysExamined": 145,
-      "totalDocsExamined": 145,
-      "nReturned": 21,
-      "executionTimeMillis": 3
+      "totalKeysExamined": 69,
+      "totalDocsExamined": 69,
+      "nReturned": 20,
+      "executionTimeMillis": 2
     }
   },
   "storage": {
     "trecho_observacoes": {
       "docs": 1869938,
       "dataMB": 423.9,
-      "storageMB": 127.1,
-      "indicesMB": 387.5,
+      "storageMB": 127.8,
+      "indicesMB": 386.2,
       "bytesPorDoc": 237
     },
-    "trecho_bucket_diario": {
-      "docs": 1598769,
-      "dataMB": 405.1,
-      "storageMB": 175.5,
-      "indicesMB": 230.7,
-      "bytesPorDoc": 265
+    "trecho_bucket_turno": {
+      "docs": 1299680,
+      "dataMB": 349.2,
+      "storageMB": 142.8,
+      "indicesMB": 182.4,
+      "bytesPorDoc": 281
     },
     "trecho_media_historica": {
       "docs": 163999,
       "dataMB": 51.3,
-      "storageMB": 15.6,
-      "indicesMB": 19.1,
+      "storageMB": 15.8,
+      "indicesMB": 15.3,
       "bytesPorDoc": 327
     }
   }

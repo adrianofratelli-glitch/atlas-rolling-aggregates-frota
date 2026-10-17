@@ -44,6 +44,11 @@ def config_inicial() -> dict:
             {"codigo": "N", "inicioHora": 18, "fimHora": 6},
         ],
         "regraNoite": os.getenv("FROTA_REGRA_NOITE", "dia_civil"),
+        # simples: raw → média num pipeline só ($out da janela inteira, a "MV com COMPLETE
+        # refresh"). incremental: raw → buckets (k dias + atrasados) → média.
+        "modoMaterializacao": os.getenv("FROTA_MODO_MATERIALIZACAO", "simples"),
+        "granularidadeBucket": os.getenv("FROTA_GRANULARIDADE_BUCKET", "turno"),
+        "incluirDow": os.getenv("FROTA_INCLUIR_DOW", "1") not in ("0", "false", "False"),
         "kReprocessamento": int(os.getenv("FROTA_K_REPROCESSAMENTO", "3")),
         "minAmostras": int(os.getenv("FROTA_MIN_AMOSTRAS", "5")),
         "modoLimpezaCamada2": os.getenv("FROTA_MODO_LIMPEZA_CAMADA2", "out"),

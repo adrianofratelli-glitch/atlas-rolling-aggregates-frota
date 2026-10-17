@@ -59,7 +59,8 @@ VALIDATORS: dict[str, dict] = {
          "mediaMin", "mediaKm", "janelaInicio", "janelaFim", "asOf", "configVersao",
          "runId", "atualizadoEm"], {
             "origem": COD, "destino": COD, "tipoVeiculo": {"enum": TIPOS_VEICULO},
-            "dow": {**INT, "minimum": 1, "maximum": 7}, "turno": COD,
+            # dow 0 = "todos os dias" quando config.incluirDow = false
+            "dow": {**INT, "minimum": 0, "maximum": 7}, "turno": COD,
             "somaMin": NUM_POS, "somaKm": NUM_POS, "n": {**INT, "minimum": 1},
             "mediaMin": NUM_POS, "mediaKm": NUM_POS,
             "janelaInicio": DATA, "janelaFim": DATA,
@@ -74,6 +75,9 @@ VALIDATORS: dict[str, dict] = {
             "regraNoite": {"enum": ["dia_civil", "dia_operacional"]},
             "kReprocessamento": {**INT, "minimum": 1}, "minAmostras": {**INT, "minimum": 1},
             "modoLimpezaCamada2": {"enum": ["merge_runid", "out"]},
+            "modoMaterializacao": {"enum": ["simples", "incremental"]},
+            "granularidadeBucket": {"enum": ["turno", "hora"]},
+            "incluirDow": {"bsonType": "bool"},
         }),
     "job_runs": _obj(["runId", "asOf", "camada", "status", "iniciadoEm"], {
         "runId": COD, "asOf": COD, "camada": {"enum": ["1", "2", "todas"]},
@@ -85,6 +89,19 @@ VALIDATORS: dict[str, dict] = {
         "_id": COD, "owner": COD, "expiraEm": DATA,
     }),
 }
+
+# Camada 1 com grão de turno: um bucket por dia local civil × turno × dow. O dow entra na
+# chave porque, com regraNoite = dia_operacional, o turno N de um dia civil mistura duas
+# datas de referência (18–23 h do próprio dia e 0–5 h, que contam no dia anterior).
+VALIDATORS["trecho_bucket_turno"] = _obj(
+    ["origem", "destino", "tipoVeiculo", "dataLocal", "turno", "dow", "somaMin", "somaKm",
+     "n", "minMin", "maxMin", "configVersao", "atualizadoEm", "runId"], {
+        "origem": COD, "destino": COD, "tipoVeiculo": {"enum": TIPOS_VEICULO},
+        "dataLocal": DATA, "turno": COD, "dow": {**INT, "minimum": 0, "maximum": 7},
+        "somaMin": NUM_POS, "somaKm": NUM_POS, "n": {**INT, "minimum": 1},
+        "minMin": NUM_POS, "maxMin": NUM_POS, "configVersao": INT,
+        "atualizadoEm": DATA, "runId": COD,
+    })
 
 # Histórico imutável da config: o fallback deriva dow/turno com a versão que gerou o
 # agregado, não com a vigente (podem divergir entre a mudança e o próximo run da camada 2).

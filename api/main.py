@@ -26,7 +26,7 @@ from frota.job import LockOcupado, materializar
 from frota.mongosh import jsonavel, para_mongosh, pipeline_mongosh
 from frota.simulacao import asof_atual, avancar, injetar_atrasado
 
-app = FastAPI(title="Agregados em janela móvel — fallback de ETA", version="0.1.0")
+app = FastAPI(title="Agregados em janela móvel — fallback de ETA", version="1.0.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5410",
                                                   "http://localhost:5410"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -87,8 +87,8 @@ def estado():
                                  sort=[("iniciadoEm", -1)])
     metadados(d)  # aquece o cache dos badges (o start.sh chama esta rota antes do "pronto")
     contagens = {c: d[c].estimated_document_count() for c in
-                 ("trecho_observacoes", "trecho_bucket_diario", "trecho_media_historica",
-                  "ingestao_pendente", "trechos", "veiculos")}
+                 ("trecho_observacoes", "trecho_bucket_diario", "trecho_bucket_turno",
+                  "trecho_media_historica", "ingestao_pendente", "trechos", "veiculos")}
     return J({"db": d.name, "mongodb": d.client.server_info()["version"],
               "asOfAtual": asof_atual(d), "hojeReal": hoje_local(cfg["timezone"]).isoformat(),
               "config": cfg, "contagens": contagens, "ultimoRun": ultimo})
@@ -199,14 +199,21 @@ def _run_api(d, run: dict) -> dict:
     s = run.get("stats", {})
     pipes, colecoes = [], ["trecho_observacoes"]
     mongosh = {}
+    if "simples" in s:
+        pipes.append(s["simples"]["pipeline"])
+        colecoes.append("trecho_media_historica")
+        mongosh["simples"] = pipeline_mongosh("trecho_observacoes", s["simples"]["pipeline"])
     if "camada1" in s:
+        destino = ("trecho_bucket_turno" if s["camada1"].get("granularidade") == "turno"
+                   else "trecho_bucket_diario")
         pipes.append(s["camada1"]["pipeline"])
-        colecoes.append("trecho_bucket_diario")
+        colecoes.append(destino)
         mongosh["camada1"] = pipeline_mongosh("trecho_observacoes", s["camada1"]["pipeline"])
     if "camada2" in s:
+        fonte = s["camada2"].get("fonte", "trecho_bucket_diario")
         pipes.append(s["camada2"]["pipeline"])
-        colecoes += ["trecho_bucket_diario", "trecho_media_historica"]
-        mongosh["camada2"] = pipeline_mongosh("trecho_bucket_diario", s["camada2"]["pipeline"])
+        colecoes += [fonte, "trecho_media_historica"]
+        mongosh["camada2"] = pipeline_mongosh(fonte, s["camada2"]["pipeline"])
     return {"run": run, "mongosh": mongosh, "badges": badges(d, colecoes, pipes)}
 
 
@@ -252,13 +259,88 @@ def buckets(origem: str, destino: str, tipoVeiculo: str, asOf: str | None = None
     de = inicio_dia(asof - timedelta(days=dias), cfg["timezone"])
     filtro = {"origem": origem, "destino": destino, "tipoVeiculo": tipoVeiculo,
               "dataLocal": {"$gte": de}}
-    docs = list(d.trecho_bucket_diario.find(filtro, {"_id": 0}).sort([("dataLocal", 1),
-                                                                      ("hora", 1)]))
+    por_turno = cfg.get("granularidadeBucket") == "turno"
+    colecao = "trecho_bucket_turno" if por_turno else "trecho_bucket_diario"
+    docs = list(d[colecao].find(filtro, {"_id": 0}).sort(
+        [("dataLocal", 1), ("turno" if por_turno else "hora", 1)]))
     raw = d.trecho_observacoes.count_documents({**{k: filtro[k] for k in
                                                    ("origem", "destino", "tipoVeiculo")},
                                                 "observadoEm": {"$gte": de}})
-    return J({"buckets": docs, "observacoesRawMesmoPeriodo": raw,
-              "mongosh": f"db.trecho_bucket_diario.find({para_mongosh(filtro)})"})
+    return J({"buckets": docs, "observacoesRawMesmoPeriodo": raw, "colecao": colecao,
+              "granularidade": "turno" if por_turno else "hora",
+              "modoMaterializacao": cfg.get("modoMaterializacao"),
+              "mongosh": f"db.{colecao}.find({para_mongosh(filtro)})"})
+
+
+# ---- simples × incremental ----------------------------------------------------
+
+DESENHOS = {
+    "simples": {"modoMaterializacao": "simples", "modoLimpezaCamada2": "out"},
+    "incremental_turno": {"modoMaterializacao": "incremental", "granularidadeBucket": "turno",
+                          "modoLimpezaCamada2": "out"},
+}
+BENCH = Path(__file__).resolve().parent.parent / "docs" / "bench-results-atlas.json"
+
+
+def _snapshot(d) -> list[dict]:
+    proj = {"_id": 0, "atualizadoEm": 0, "runId": 0, "configVersao": 0, "asOf": 0}
+    return list(d.trecho_media_historica.find({}, proj).sort(
+        [("origem", 1), ("destino", 1), ("tipoVeiculo", 1), ("dow", 1), ("turno", 1)]))
+
+
+@app.post("/api/comparar-modos")
+def comparar_modos(body: dict = Body(default={})):
+    """Roda os dois desenhos sobre a mesma raw e o mesmo asOf, mede e compara o agregado.
+
+    Não grava a config: o desenho é trocado só para a execução. O incremental roda duas
+    vezes — a primeira pode ser carga inicial; a segunda é o run diário em regime.
+    """
+    d = db()
+    asof = _asof(body.get("asOf"))
+    cfg = config_mod.ler(d)
+    resultado = {}
+    with _escrita:
+        try:
+            for nome, execucao in DESENHOS.items():
+                runs = [materializar(d, asof, execucao=execucao)]
+                if nome != "simples":
+                    runs.append(materializar(d, asof, execucao=execucao))
+                resultado[nome] = {
+                    "runs": [{"runId": r["runId"], "segundos": round(
+                        (r["finalizadoEm"] - r["iniciadoEm"]).total_seconds(), 2),
+                        "etapas": {k: {c: v for c, v in st.items() if c in (
+                            "modo", "lidos", "inseridos", "atualizados", "removidos",
+                            "duracaoMs", "diasReprocessados")}
+                            for k, st in r["stats"].items() if isinstance(st, dict)}}
+                        for r in runs],
+                    "agregado": _snapshot(d),
+                    "badges": badges(d, ["trecho_observacoes"], [
+                        st["pipeline"] for st in runs[-1]["stats"].values()
+                        if isinstance(st, dict) and "pipeline" in st]),
+                }
+            # devolve o agregado ao desenho configurado
+            materializar(d, asof)
+        except LockOcupado as e:
+            return J({"erro": str(e)}, 409)
+    iguais = resultado["simples"]["agregado"] == resultado["incremental_turno"]["agregado"]
+    for r in resultado.values():
+        r["documentos"] = len(r.pop("agregado"))
+    contagens = {c: d[c].estimated_document_count() for c in
+                 ("trecho_observacoes", "trecho_bucket_turno", "trecho_bucket_diario",
+                  "trecho_media_historica")}
+    bench = None
+    if BENCH.exists():
+        import json as _json
+        b = _json.loads(BENCH.read_text())
+        bench = {"medidoEm": b.get("medidoEm"), "perfil": b.get("perfil"),
+                 "observacoes": (b.get("seed") or {}).get("observacoes"),
+                 "simplesSegundos": (b.get("simples") or b.get("recalculoCompletoRaw") or {}).get("segundos"),
+                 "incremental": b.get("jobRegimeTurno") or b.get("jobRegime"),
+                 "fonte": BENCH.name}
+    return J({"asOf": asof, "configVersao": cfg["versao"], "desenhoConfigurado": {
+        k: cfg.get(k) for k in ("modoMaterializacao", "granularidadeBucket")},
+        "mesmoAgregado": iguais, "desenhos": resultado, "contagens": contagens,
+        "benchmarkEscala": bench})
 
 
 # ---- janela móvel -----------------------------------------------------------
@@ -315,7 +397,11 @@ def get_config():
 
 @app.post("/api/config")
 def post_config(body: dict = Body(...)):
-    """Muda a config; com `rerodarCamada2`, recalcula só a camada 2 (raw intacta)."""
+    """Muda a config e, com `rerodarCamada2`, recalcula o mínimo necessário.
+
+    simples: relê a raw (é o desenho). incremental/hora: só a camada 2, raw intacta.
+    incremental/turno: turnos e regra estão gravados nos buckets, então refaz as duas.
+    """
     d = db()
     mudancas = body.get("mudancas", {})
     with _escrita:
@@ -325,18 +411,25 @@ def post_config(body: dict = Body(...)):
         cfg = config_mod.atualizar(d, mudancas) if mudancas else config_mod.ler(d)
         saida = {"config": cfg}
         if body.get("rerodarCamada2"):
+            hora = (cfg.get("modoMaterializacao") == "incremental"
+                    and cfg.get("granularidadeBucket") == "hora")
+            camada = "2" if hora else "todas"
             try:
-                run = materializar(d, _asof(body.get("asOf")), "2")
+                run = materializar(d, _asof(body.get("asOf")), camada)
             except LockOcupado as e:
                 return J({"erro": f"config v{cfg['versao']} salva, mas a camada 2 não foi "
                                   f"recalculada: {e}", "config": cfg}, 409)
             b_depois = d.trecho_bucket_diario.find_one(sort=[("atualizadoEm", -1)],
                                                        projection={"runId": 1, "atualizadoEm": 1})
             saida.update(_run_api(d, run))
+            st = run["stats"]
             saida["provaRawIntacta"] = {
-                "camada1Executada": "camada1" in run["stats"],
-                "observacoesRawLidasPelaCamada2": 0,
-                "bucketsLidos": run["stats"]["camada2"]["lidos"],
+                "desenho": "incremental/hora" if hora else (
+                    "simples" if "simples" in st else "incremental/turno"),
+                "camada1Executada": "camada1" in st,
+                "observacoesRawLidas": (st["simples"]["lidos"] if "simples" in st else
+                                        st.get("camada1", {}).get("lidos", 0)),
+                "bucketsLidos": st.get("camada2", {}).get("lidos", 0),
                 "rawDocsAntes": antes_raw,
                 "rawDocsDepois": d.trecho_observacoes.estimated_document_count(),
                 "ultimoBucketRunIdAntes": (b_antes or {}).get("runId"),

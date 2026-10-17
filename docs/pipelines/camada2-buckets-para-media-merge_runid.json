@@ -19,59 +19,6 @@
       }
     },
     {
-      "comentario": "Deriva turno da hora local (gerado de config.turnos v1) e dow conforme regraNoite = dia_civil. Nenhum dado da raw é relido.",
-      "estagio": {
-        "$set": {
-          "turno": {
-            "$switch": {
-              "branches": [
-                {
-                  "case": {
-                    "$and": [
-                      {
-                        "$gte": [
-                          "$hora",
-                          6
-                        ]
-                      },
-                      {
-                        "$lt": [
-                          "$hora",
-                          12
-                        ]
-                      }
-                    ]
-                  },
-                  "then": "M"
-                },
-                {
-                  "case": {
-                    "$and": [
-                      {
-                        "$gte": [
-                          "$hora",
-                          12
-                        ]
-                      },
-                      {
-                        "$lt": [
-                          "$hora",
-                          18
-                        ]
-                      }
-                    ]
-                  },
-                  "then": "T"
-                }
-              ],
-              "default": "N"
-            }
-          },
-          "dow": "$dowCivil"
-        }
-      }
-    },
-    {
       "comentario": "Chave sem data: 'toda sexta à noite' = { dow: 6, turno: 'N' } soma todas as sextas da janela. Soma de somas e de contagens (Computed Pattern).",
       "estagio": {
         "$group": {
@@ -95,7 +42,7 @@
       }
     },
     {
-      "comentario": "Média = soma / contagem, calculada uma vez aqui e não na consulta. Grava a janela efetiva, asOf e a versão da config para auditoria.",
+      "comentario": "Média = soma / contagem, calculada uma vez aqui e não na consulta (somas arredondadas a 6 casas, como na camada 1). Grava janela, asOf e versão da config.",
       "estagio": {
         "$project": {
           "_id": 0,
@@ -104,18 +51,38 @@
           "tipoVeiculo": "$_id.tipoVeiculo",
           "dow": "$_id.dow",
           "turno": "$_id.turno",
-          "somaMin": 1,
-          "somaKm": 1,
+          "somaMin": {
+            "$round": [
+              "$somaMin",
+              6
+            ]
+          },
+          "somaKm": {
+            "$round": [
+              "$somaKm",
+              6
+            ]
+          },
           "n": 1,
           "mediaMin": {
             "$divide": [
-              "$somaMin",
+              {
+                "$round": [
+                  "$somaMin",
+                  6
+                ]
+              },
               "$n"
             ]
           },
           "mediaKm": {
             "$divide": [
-              "$somaKm",
+              {
+                "$round": [
+                  "$somaKm",
+                  6
+                ]
+              },
               "$n"
             ]
           },
@@ -174,56 +141,6 @@
       }
     },
     {
-      "$set": {
-        "turno": {
-          "$switch": {
-            "branches": [
-              {
-                "case": {
-                  "$and": [
-                    {
-                      "$gte": [
-                        "$hora",
-                        6
-                      ]
-                    },
-                    {
-                      "$lt": [
-                        "$hora",
-                        12
-                      ]
-                    }
-                  ]
-                },
-                "then": "M"
-              },
-              {
-                "case": {
-                  "$and": [
-                    {
-                      "$gte": [
-                        "$hora",
-                        12
-                      ]
-                    },
-                    {
-                      "$lt": [
-                        "$hora",
-                        18
-                      ]
-                    }
-                  ]
-                },
-                "then": "T"
-              }
-            ],
-            "default": "N"
-          }
-        },
-        "dow": "$dowCivil"
-      }
-    },
-    {
       "$group": {
         "_id": {
           "origem": "$origem",
@@ -251,18 +168,38 @@
         "tipoVeiculo": "$_id.tipoVeiculo",
         "dow": "$_id.dow",
         "turno": "$_id.turno",
-        "somaMin": 1,
-        "somaKm": 1,
+        "somaMin": {
+          "$round": [
+            "$somaMin",
+            6
+          ]
+        },
+        "somaKm": {
+          "$round": [
+            "$somaKm",
+            6
+          ]
+        },
         "n": 1,
         "mediaMin": {
           "$divide": [
-            "$somaMin",
+            {
+              "$round": [
+                "$somaMin",
+                6
+              ]
+            },
             "$n"
           ]
         },
         "mediaKm": {
           "$divide": [
-            "$somaKm",
+            {
+              "$round": [
+                "$somaKm",
+                6
+              ]
+            },
             "$n"
           ]
         },

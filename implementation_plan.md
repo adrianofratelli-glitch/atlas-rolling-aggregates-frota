@@ -1,6 +1,6 @@
 # Plano de implementação
 
-Estado em 2026-10-16. Versão 0.1.0 (não publicada).
+Estado em 2026-10-16. Versão 1.0.0 (repo privado, release v1.0.0).
 
 ## Concluído
 
@@ -14,9 +14,10 @@ Estado em 2026-10-16. Versão 0.1.0 (não publicada).
 8. Benchmark `escala` (local e Atlas) e documentação.
 9. Validação no Atlas M30 (MongoDB 9.0.4): 90 testes, bateria de resiliência (35 casos), caos real no Docker, jornada de UI.
 10. Registro no portal (`povs.json`) e reserva de portas 5410/8410 (+27027).
+11. Desenho simples (raw → média com `$out`) como default; incremental por turno ou hora como opção; mesmo agregado nos três (testado); aba Simples × Incremental.
+12. README em inglês com prints reais do Atlas; visão técnica em `docs/visao-tecnica.md`.
 
 ## Não feito / próximos passos
 
 - Réplica gravada para o `pov-demo-player`.
-- Merge da reserva de portas no `_shared` (branch `chore/portas-rolling-aggregates`).
 - Camada 2 incremental (somar dia que entra, subtrair o que sai) se o volume de buckets crescer.

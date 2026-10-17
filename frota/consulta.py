@@ -31,9 +31,11 @@ def escolher_nivel(docs: list[dict], chave: dict, min_amostras: int) -> dict:
     if not docs:
         return {"nivel": "sem_historico", "mediaMin": None, "mediaKm": None, "n": 0,
                 "abaixoDoMinimo": True}
-    niveis = [
+    niveis = [] if chave["dow"] == 0 else [  # dow 0: agregado só por turno
         ("dow+turno", [d for d in docs if d["dow"] == chave["dow"]
                        and d["turno"] == chave["turno"]]),
+    ]
+    niveis += [
         ("turno", [d for d in docs if d["turno"] == chave["turno"]]),
         ("geral", docs),
     ]

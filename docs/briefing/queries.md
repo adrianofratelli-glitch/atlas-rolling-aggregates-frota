@@ -5,7 +5,9 @@ Fonte: `frota/pipelines/*.py`, `frota/consulta.py`, `frota/job.py`. Versões col
 
 | Operação | Collection | Forma | Índice |
 |---|---|---|---|
-| Camada 1 | `trecho_observacoes` | `$match observadoEm [a,b)` (um `$or` se houver dias atrasados não contíguos) → `$group` por o/d/tipo + `$dateTrunc(day, tz)` + `$hour(tz)` → `$project` (+`dowCivil`) → `$merge` on chave do bucket, `replace`/`insert` | `observadoEm_1_ttl`; `chave_bucket_unica` (exigido pelo `on`) |
+| Simples | `trecho_observacoes` | `$match observadoEm [início, fim)` → `$set hora/dowCivil` → turno/dow → `$group` por o/d/tipo/dow/turno → `$project` médias → `$out` | `observadoEm_1_ttl` |
+| Camada 1 (turno) | `trecho_observacoes` | `$match` dias → hora/dow → turno/dow → `$group` por o/d/tipo/dia local/turno/dow → `$merge` | `chave_bucket_turno_unica` |
+| Camada 1 (hora) | `trecho_observacoes` | `$match observadoEm [a,b)` (um `$or` se houver dias atrasados não contíguos) → `$group` por o/d/tipo + `$dateTrunc(day, tz)` + `$hour(tz)` → `$project` (+`dowCivil`) → `$merge` on chave do bucket, `replace`/`insert` | `observadoEm_1_ttl`; `chave_bucket_unica` (exigido pelo `on`) |
 | Limpeza camada 1 | `trecho_bucket_diario` | `deleteMany({dataLocal ∈ dias, runId ≠ atual})` | `dataLocal_1_ttl` |
 | Detecção de atraso | `trecho_observacoes` | `$match ingeridoEm (wmAnterior, wmNovo]` → `$match observadoEm` na janela → `$group` por dia local | `ingeridoEm_1` |
 | Camada 2 | `trecho_bucket_diario` | `$match dataLocal [início, fim)` → `$set turno ($switch), dow` → `$group` por o/d/tipo/dow/turno → `$project` médias → `$merge` ou `$out` | `dataLocal_1_ttl`; `chave_media_unica` |

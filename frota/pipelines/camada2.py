@@ -11,9 +11,15 @@ COLECAO_DESTINO = "trecho_media_historica"
 CHAVE_MEDIA = ["origem", "destino", "tipoVeiculo", "dow", "turno"]
 
 
+def colecao_origem(cfg: dict) -> str:
+    return ("trecho_bucket_turno" if cfg.get("granularidadeBucket", "turno") == "turno"
+            else "trecho_bucket_diario")
+
+
 def pipeline(janela_inicio: datetime, janela_fim: datetime, asof: str, cfg: dict,
              run_id: str) -> list[Estagio]:
     modo = cfg["modoLimpezaCamada2"]
+    por_turno = cfg.get("granularidadeBucket", "turno") == "turno"
     final = (
         Estagio(
             "merge_runid: upsert pela chave única do agregado (replace = idempotente). "
@@ -27,13 +33,14 @@ def pipeline(janela_inicio: datetime, janela_fim: datetime, asof: str, cfg: dict
             {"$out": COLECAO_DESTINO},
         )
     )
-    return [
+    estagios = [
         Estagio(
             "Recorte da janela móvel sobre o dia local do bucket: [início, fim) "
             "semiaberto, sem $lte. Usa o índice { dataLocal: 1 }. O dia de hoje nunca "
             "entra porque fim = 00:00 local de asOf.",
             {"$match": {"dataLocal": {"$gte": janela_inicio, "$lt": janela_fim}}},
         ),
+        None if por_turno else  # buckets de turno já trazem turno e dow da camada 1
         Estagio(
             f"Deriva turno da hora local (gerado de config.turnos v{cfg['versao']}) e "
             f"dow conforme regraNoite = {cfg['regraNoite']}. Nenhum dado da raw é relido.",
@@ -68,3 +75,4 @@ def pipeline(janela_inicio: datetime, janela_fim: datetime, asof: str, cfg: dict
         ),
         final,
     ]
+    return [e for e in estagios if e is not None]

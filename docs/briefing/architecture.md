@@ -13,7 +13,8 @@ Extraído do código em `frota/`, `jobs/`, `api/` e `frontend/`.
 | `frota/config.py` | Documento `config` `_id: "ativa"`, validação de turnos, `versao` incrementada a cada mudança. |
 | `frota/janela.py` | Janela semiaberta em dias locais, `derivar_chave` (dow/turno de um instante), validação de turnos. |
 | `frota/pipelines/` | `camada1`, `camada2`, `raw_onthefly`, `expressoes` (turno/dow gerados da config). Cada estágio carrega comentário. |
-| `frota/job.py` | Planejamento da camada 1 (D-1…D-k ∪ atrasos pelo watermark), execução das camadas, lease em `job_locks`, retry com backoff, `job_runs`. |
+| `frota/pipelines/simples.py` | Modo simples (default): raw → média num pipeline, `$out`. |
+| `frota/job.py` | Despacho por `modoMaterializacao` (simples × incremental) e grão (turno × hora); assinatura e cobertura do grão para decidir carga/recarga/incremental; planejamento da camada 1 (D-1…D-k ∪ atrasos pelo watermark), execução das camadas, lease em `job_locks`, retry com backoff, `job_runs`. |
 | `frota/consulta.py` | `fallback` (find ≤ 21 docs + hierarquia) e `onthefly` (mesma pergunta na raw). |
 | `frota/explain.py` | Resumo do `explain("executionStats")` (estágio vencedor, índices, keys/docs examinados). |
 | `frota/capo.py` | Metadados lidos de `listCollections`/`listIndexes` e badges derivados do pipeline executado. |
@@ -24,6 +25,12 @@ Extraído do código em `frota/`, `jobs/`, `api/` e `frontend/`.
 
 ## Fluxo
 
+Simples (default):
+```
+trecho_observacoes ──($match janela → turno/dow → $group → $out)──▶ trecho_media_historica
+```
+
+Incremental (grão `turno` em `trecho_bucket_turno` ou `hora` em `trecho_bucket_diario`):
 ```
 trecho_observacoes ──(camada 1: $match dias → $group dia local×hora → $merge replace)──▶ trecho_bucket_diario
 trecho_bucket_diario ──(camada 2: $match janela → turno/dow → $group → $merge+runId | $out)──▶ trecho_media_historica

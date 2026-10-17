@@ -46,6 +46,14 @@ def indices(cfg: dict) -> dict[str, list[IndexModel]]:
             IndexModel([("dataLocal", ASCENDING)], name="dataLocal_1_ttl",
                        expireAfterSeconds=cfg["ttlBucketDias"] * DIA_S),
         ],
+        "trecho_bucket_turno": [
+            IndexModel([("origem", ASCENDING), ("destino", ASCENDING),
+                        ("tipoVeiculo", ASCENDING), ("dataLocal", ASCENDING),
+                        ("turno", ASCENDING), ("dow", ASCENDING)], unique=True,
+                       name="chave_bucket_turno_unica"),
+            IndexModel([("dataLocal", ASCENDING)], name="dataLocal_1_ttl",
+                       expireAfterSeconds=cfg["ttlBucketDias"] * DIA_S),
+        ],
         "trecho_media_historica": [
             # serve ao `on` do $merge e à consulta de fallback (prefixo o/d/tipo)
             IndexModel([("origem", ASCENDING), ("destino", ASCENDING),
@@ -101,7 +109,8 @@ def bootstrap(db: Database, verbose: bool = False) -> dict:
 
 
 COLECOES_DADOS = ["pontos", "tipos_veiculo", "veiculos", "trechos", "trecho_observacoes",
-                  "trecho_bucket_diario", "trecho_media_historica", "job_runs", "job_locks",
+                  "trecho_bucket_diario", "trecho_bucket_turno", "trecho_media_historica",
+                  "job_runs", "job_locks",
                   "ingestao_pendente"]
 
 

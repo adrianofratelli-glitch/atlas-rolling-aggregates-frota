@@ -9,7 +9,7 @@ from pymongo.database import Database
 from . import config as config_mod
 from .janela import inicio_dia, janela, parse_asof
 from .mongosh import para_mongosh, pipeline_mongosh
-from .pipelines import camada1, camada2, comentados, raw_onthefly
+from .pipelines import camada1, camada2, comentados, raw_onthefly, simples
 
 DIA_S = 86400
 
@@ -90,6 +90,8 @@ def badges(db: Database, colecoes: list[str], pipelines: list[list[dict]] | None
     for c in colecoes:
         if c == "trecho_bucket_diario":
             add("Bucket Pattern", "lê/grava buckets dia × hora com soma e contagem")
+        if c == "trecho_bucket_turno":
+            add("Bucket Pattern", "lê/grava buckets dia × turno com soma e contagem")
         if c == "trecho_media_historica":
             add("Computed Pattern", "média pré-calculada lida/gravada pronta")
         m = meta.get(c, {})
@@ -113,16 +115,23 @@ def pipelines_atuais(db: Database, asof: str) -> dict:
     d = parse_asof(asof)
     ji, jf = janela(d, cfg)
     k = cfg["kReprocessamento"]
-    c1 = comentados(camada1.pipeline(
-        [(inicio_dia(d - timedelta(days=k), tz), inicio_dia(d, tz))], "<runId>", tz))
+    intervalo = [(inicio_dia(d - timedelta(days=k), tz), inicio_dia(d, tz))]
+    por_turno = cfg.get("granularidadeBucket", "turno") == "turno"
+    c1 = comentados(camada1.pipeline_turno(intervalo, "<runId>", cfg) if por_turno
+                    else camada1.pipeline(intervalo, "<runId>", tz))
     c2 = comentados(camada2.pipeline(ji, jf, asof, cfg, "<runId>"))
+    sp = comentados(simples.pipeline(ji, jf, asof, cfg, "<runId>"))
     raw = comentados(raw_onthefly.pipeline("BASE-001", "POSTO-0042", "BITREM", ji, jf, cfg))
     filtro = {"origem": "BASE-001", "destino": "POSTO-0042", "tipoVeiculo": "BITREM"}
     return {
+        "desenho": {k: cfg.get(k) for k in ("modoMaterializacao", "granularidadeBucket",
+                                            "modoLimpezaCamada2", "incluirDow")},
+        "simples": {"colecao": "trecho_observacoes", "pipeline": sp,
+                    "mongosh": pipeline_mongosh("trecho_observacoes", sp)},
         "camada1": {"colecao": "trecho_observacoes", "pipeline": c1,
                     "mongosh": pipeline_mongosh("trecho_observacoes", c1)},
-        "camada2": {"colecao": "trecho_bucket_diario", "pipeline": c2,
-                    "mongosh": pipeline_mongosh("trecho_bucket_diario", c2)},
+        "camada2": {"colecao": camada2.colecao_origem(cfg), "pipeline": c2,
+                    "mongosh": pipeline_mongosh(camada2.colecao_origem(cfg), c2)},
         "fallback": {"colecao": "trecho_media_historica", "filtro": filtro,
                      "mongosh": f"db.trecho_media_historica.find({para_mongosh(filtro)})"
                                 ".explain('executionStats')"},

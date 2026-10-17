@@ -1,0 +1,359 @@
+{
+  "descricao": "Modo simples (default) com asOf 2026-10-16: janela inteira [2026-04-19T03:00Z, 2026-10-16T03:00Z) → média por dow × turno, $out.",
+  "colecao": "trecho_observacoes",
+  "asOf": "2026-10-16",
+  "estagios": [
+    {
+      "comentario": "Toda a janela [início, fim) — semiaberta, sem $lte; hoje fica fora porque fim = 00:00 local de asOf. Usa o índice { observadoEm: 1 }.",
+      "estagio": {
+        "$match": {
+          "observadoEm": {
+            "$gte": {
+              "$date": "2026-04-19T03:00:00Z"
+            },
+            "$lt": {
+              "$date": "2026-10-16T03:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Hora e dia da semana locais (timezone da config), por observação.",
+      "estagio": {
+        "$set": {
+          "hora": {
+            "$hour": {
+              "date": "$observadoEm",
+              "timezone": "America/Sao_Paulo"
+            }
+          },
+          "dowCivil": {
+            "$dayOfWeek": {
+              "date": "$observadoEm",
+              "timezone": "America/Sao_Paulo"
+            }
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Turno gerado de config.turnos v1; dow pela regraNoite = dia_civil.",
+      "estagio": {
+        "$set": {
+          "turno": {
+            "$switch": {
+              "branches": [
+                {
+                  "case": {
+                    "$and": [
+                      {
+                        "$gte": [
+                          "$hora",
+                          6
+                        ]
+                      },
+                      {
+                        "$lt": [
+                          "$hora",
+                          12
+                        ]
+                      }
+                    ]
+                  },
+                  "then": "M"
+                },
+                {
+                  "case": {
+                    "$and": [
+                      {
+                        "$gte": [
+                          "$hora",
+                          12
+                        ]
+                      },
+                      {
+                        "$lt": [
+                          "$hora",
+                          18
+                        ]
+                      }
+                    ]
+                  },
+                  "then": "T"
+                }
+              ],
+              "default": "N"
+            }
+          },
+          "dow": "$dowCivil"
+        }
+      }
+    },
+    {
+      "comentario": "Chave sem data: { origem, destino, tipoVeiculo, dow, turno }. Soma e contagem guardadas para que turno/geral sejam somas corretas na consulta.",
+      "estagio": {
+        "$group": {
+          "_id": {
+            "origem": "$origem",
+            "destino": "$destino",
+            "tipoVeiculo": "$tipoVeiculo",
+            "dow": "$dow",
+            "turno": "$turno"
+          },
+          "somaMin": {
+            "$sum": "$tempoMin"
+          },
+          "somaKm": {
+            "$sum": "$distanciaKm"
+          },
+          "n": {
+            "$sum": 1
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Média calculada uma vez aqui (somas a 6 casas: $sum de doubles depende da ordem).",
+      "estagio": {
+        "$project": {
+          "_id": 0,
+          "origem": "$_id.origem",
+          "destino": "$_id.destino",
+          "tipoVeiculo": "$_id.tipoVeiculo",
+          "dow": "$_id.dow",
+          "turno": "$_id.turno",
+          "somaMin": {
+            "$round": [
+              "$somaMin",
+              6
+            ]
+          },
+          "somaKm": {
+            "$round": [
+              "$somaKm",
+              6
+            ]
+          },
+          "n": 1,
+          "mediaMin": {
+            "$divide": [
+              {
+                "$round": [
+                  "$somaMin",
+                  6
+                ]
+              },
+              "$n"
+            ]
+          },
+          "mediaKm": {
+            "$divide": [
+              {
+                "$round": [
+                  "$somaKm",
+                  6
+                ]
+              },
+              "$n"
+            ]
+          },
+          "janelaInicio": {
+            "$literal": {
+              "$date": "2026-04-19T03:00:00Z"
+            }
+          },
+          "janelaFim": {
+            "$literal": {
+              "$date": "2026-10-16T03:00:00Z"
+            }
+          },
+          "asOf": {
+            "$literal": "2026-10-16"
+          },
+          "configVersao": {
+            "$literal": 1
+          },
+          "runId": {
+            "$literal": "<runId>"
+          },
+          "atualizadoEm": "$$NOW"
+        }
+      }
+    },
+    {
+      "comentario": "Troca atômica da collection (preserva índices e validator): leitores veem a versão anterior ou a nova; chaves fora da janela deixam de existir.",
+      "estagio": {
+        "$out": "trecho_media_historica"
+      }
+    }
+  ],
+  "pipeline": [
+    {
+      "$match": {
+        "observadoEm": {
+          "$gte": {
+            "$date": "2026-04-19T03:00:00Z"
+          },
+          "$lt": {
+            "$date": "2026-10-16T03:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "$set": {
+        "hora": {
+          "$hour": {
+            "date": "$observadoEm",
+            "timezone": "America/Sao_Paulo"
+          }
+        },
+        "dowCivil": {
+          "$dayOfWeek": {
+            "date": "$observadoEm",
+            "timezone": "America/Sao_Paulo"
+          }
+        }
+      }
+    },
+    {
+      "$set": {
+        "turno": {
+          "$switch": {
+            "branches": [
+              {
+                "case": {
+                  "$and": [
+                    {
+                      "$gte": [
+                        "$hora",
+                        6
+                      ]
+                    },
+                    {
+                      "$lt": [
+                        "$hora",
+                        12
+                      ]
+                    }
+                  ]
+                },
+                "then": "M"
+              },
+              {
+                "case": {
+                  "$and": [
+                    {
+                      "$gte": [
+                        "$hora",
+                        12
+                      ]
+                    },
+                    {
+                      "$lt": [
+                        "$hora",
+                        18
+                      ]
+                    }
+                  ]
+                },
+                "then": "T"
+              }
+            ],
+            "default": "N"
+          }
+        },
+        "dow": "$dowCivil"
+      }
+    },
+    {
+      "$group": {
+        "_id": {
+          "origem": "$origem",
+          "destino": "$destino",
+          "tipoVeiculo": "$tipoVeiculo",
+          "dow": "$dow",
+          "turno": "$turno"
+        },
+        "somaMin": {
+          "$sum": "$tempoMin"
+        },
+        "somaKm": {
+          "$sum": "$distanciaKm"
+        },
+        "n": {
+          "$sum": 1
+        }
+      }
+    },
+    {
+      "$project": {
+        "_id": 0,
+        "origem": "$_id.origem",
+        "destino": "$_id.destino",
+        "tipoVeiculo": "$_id.tipoVeiculo",
+        "dow": "$_id.dow",
+        "turno": "$_id.turno",
+        "somaMin": {
+          "$round": [
+            "$somaMin",
+            6
+          ]
+        },
+        "somaKm": {
+          "$round": [
+            "$somaKm",
+            6
+          ]
+        },
+        "n": 1,
+        "mediaMin": {
+          "$divide": [
+            {
+              "$round": [
+                "$somaMin",
+                6
+              ]
+            },
+            "$n"
+          ]
+        },
+        "mediaKm": {
+          "$divide": [
+            {
+              "$round": [
+                "$somaKm",
+                6
+              ]
+            },
+            "$n"
+          ]
+        },
+        "janelaInicio": {
+          "$literal": {
+            "$date": "2026-04-19T03:00:00Z"
+          }
+        },
+        "janelaFim": {
+          "$literal": {
+            "$date": "2026-10-16T03:00:00Z"
+          }
+        },
+        "asOf": {
+          "$literal": "2026-10-16"
+        },
+        "configVersao": {
+          "$literal": 1
+        },
+        "runId": {
+          "$literal": "<runId>"
+        },
+        "atualizadoEm": "$$NOW"
+      }
+    },
+    {
+      "$out": "trecho_media_historica"
+    }
+  ]
+}

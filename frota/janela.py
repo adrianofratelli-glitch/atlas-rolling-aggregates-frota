@@ -108,6 +108,8 @@ def derivar_chave(instante: datetime, cfg: dict) -> dict:
     dow = dow_civil(dia)
     if cfg["regraNoite"] == "dia_operacional" and hora < corte_madrugada(cfg["turnos"]):
         dow = dow_civil(dia - timedelta(days=1))
+    if not cfg.get("incluirDow", True):
+        dow = 0  # chave só por turno
     return {"dow": dow, "turno": turno_da_hora(hora, cfg["turnos"]), "hora": hora,
             "dowCivil": dow_civil(dia), "dataLocal": dia.isoformat()}
 

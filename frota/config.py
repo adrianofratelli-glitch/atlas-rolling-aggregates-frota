@@ -7,6 +7,7 @@ from . import settings
 from .janela import validar_turnos
 
 CAMPOS_EDITAVEIS = {"turnos", "regraNoite", "minAmostras", "modoLimpezaCamada2",
+                    "modoMaterializacao", "granularidadeBucket", "incluirDow",
                     "kReprocessamento", "janelaDias"}
 
 
@@ -14,6 +15,12 @@ def validar(cfg: dict) -> None:
     validar_turnos(cfg["turnos"])
     if cfg["regraNoite"] not in ("dia_civil", "dia_operacional"):
         raise ValueError("regraNoite deve ser dia_civil ou dia_operacional")
+    if cfg.get("modoMaterializacao", "simples") not in ("simples", "incremental"):
+        raise ValueError("modoMaterializacao deve ser simples ou incremental")
+    if cfg.get("granularidadeBucket", "turno") not in ("turno", "hora"):
+        raise ValueError("granularidadeBucket deve ser turno ou hora")
+    if not isinstance(cfg.get("incluirDow", True), bool):
+        raise ValueError("incluirDow deve ser true ou false")
     if cfg["modoLimpezaCamada2"] not in ("merge_runid", "out"):
         raise ValueError("modoLimpezaCamada2 deve ser merge_runid ou out")
     for campo in ("janelaDias", "kReprocessamento", "minAmostras"):
@@ -51,7 +58,8 @@ def versao(db: Database, numero: int) -> dict | None:
         doc = db.config_versoes.find_one({"_id": numero})
         if not doc:
             return None
-        _VERSOES[chave] = {**doc, "_id": "ativa"}
+        base = settings.config_inicial()
+        _VERSOES[chave] = {**{k: base[k] for k in NOVOS_DEFAULTS}, **doc, "_id": "ativa"}
     return _VERSOES[chave]
 
 
@@ -68,11 +76,16 @@ def vigente_em_cache(db: Database) -> dict:
     return _VIGENTE[db.name][1]
 
 
+NOVOS_DEFAULTS = ("modoMaterializacao", "granularidadeBucket", "incluirDow")
+
+
 def ler(db: Database) -> dict:
     cfg = db.config.find_one({"_id": "ativa"})
     if cfg is None:
         return garantir(db)
-    return cfg
+    # documentos criados antes destes campos: completa com o default do .env
+    base = settings.config_inicial()
+    return {**{k: base[k] for k in NOVOS_DEFAULTS}, **cfg}
 
 
 def atualizar(db: Database, mudancas: dict) -> dict:

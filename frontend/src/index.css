@@ -178,3 +178,5 @@ legend { padding: 0 6px; color: var(--text-sec); font-size: 12.5px; }
 
 /* resposta anterior visível enquanto a nova chega: atenuada, nunca apresentada como atual */
 .atualizando { opacity: .55; transition: opacity .18s var(--ease); }
+.secao { margin: 22px 0 6px; font-size: clamp(20px, 2.4vw, 28px); }
+.pad { padding: 10px 14px; margin: 0; }

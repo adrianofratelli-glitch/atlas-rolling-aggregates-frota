@@ -24,10 +24,20 @@ def expr_turno(turnos: list[dict], hora: str | dict = "$hora") -> dict:
 
 
 def expr_dow(cfg: dict, dow_civil: str | dict = "$dowCivil", hora: str | dict = "$hora"):
-    """dow da chave. `dia_operacional`: madrugada conta no dia anterior (1(dom)→7, 7→6)."""
+    """dow da chave. `dia_operacional`: madrugada conta no dia anterior (1(dom)→7, 7→6).
+
+    Com `incluirDow = false` a chave é só o turno: dow 0 ("todos os dias")."""
+    if not cfg.get("incluirDow", True):
+        return {"$literal": 0}
     if cfg["regraNoite"] != "dia_operacional":
         return dow_civil
     corte = corte_madrugada(cfg["turnos"])
     return {"$cond": [{"$lt": [hora, corte]},
                       {"$add": [{"$mod": [{"$add": [dow_civil, 5]}, 7]}, 1]},
                       dow_civil]}
+
+
+def set_hora_dow_civil(tz: str) -> dict:
+    """Hora e dia da semana locais de cada observação (sem relógio do sistema)."""
+    return {"$set": {"hora": {"$hour": {"date": "$observadoEm", "timezone": tz}},
+                     "dowCivil": {"$dayOfWeek": {"date": "$observadoEm", "timezone": tz}}}}

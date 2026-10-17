@@ -6,7 +6,9 @@ recomendação de produção sem a validação do time de operação.
 
 | # | Decisão | Default da POV | Onde mudar | Impacto de mudar |
 |---|---|---|---|---|
-| 1 | Limites dos turnos | M 06–12, T 12–18, N 18–06 | `config.turnos` (UI: aba Config) | Só a camada 2 é recalculada; raw e buckets não mudam (a hora está no grão do bucket). |
+| 0 | Desenho | **simples** (raw → média com `$out`) | `config.modoMaterializacao` | `incremental` (buckets por turno ou hora) só se a raw precisar de retenção curta ou o recálculo completo ficar caro. Mesmo agregado nos dois (testado). |
+| 0b | Dia da semana na chave | sim (`incluirDow: true`, ≤ 21 docs) | `config.incluirDow` | `false`: só M/T/N (≤ 3 docs por trecho/veículo), a versão "mais simples" aceita. |
+| 1 | Limites dos turnos | M 06–12, T 12–18, N 18–06 | `config.turnos` (UI: aba Config) | Simples: o próximo run já usa. Incremental por turno: refaz a camada 1. Incremental por hora: só a camada 2. |
 | 2 | Regra da noite | `dia_civil` | `config.regraNoite` | `dia_operacional` faz a madrugada (antes do fim do turno N) contar no dia anterior: sexta 01:00 vira "sexta à noite". Só camada 2. |
 | 3 | Instante que define o turno | partida do trecho (`observadoEm`) | gerador e contrato da ingestão | Usar chegada ou ponto médio muda o bucket de viagens que cruzam limites de turno; exige reprocessar a raw (enquanto ela existir). |
 | 4 | Identidade dos pontos | código estável (`BASE-001`, `POSTO-0042`) | cadastro mestre | Em produção vem do cadastro mestre de bases/postos e de geofence para associar o GPS ao código. Coordenada bruta nunca é chave. Decisão do cliente. |
@@ -19,5 +21,5 @@ recomendação de produção sem a validação do time de operação.
 | 11 | Retenção dos buckets | TTL 190 dias | `config.ttlBucketDias` | Precisa ser ≥ janela + margem; abaixo de 180 a camada 2 perde dias. |
 | 12 | Estatística | média simples, outliers incluídos | camada 2 | `$median`/`$percentile` (MongoDB 7.0+) existem, mas **não se compõem** a partir de soma/contagem: exigiriam guardar as amostras (ou um sketch) no bucket, ou recalcular sobre a raw. Alternativas componíveis: média aparada por limites fixos, soma de quadrados para desvio-padrão. |
 | 13 | Limpeza da camada 2 | `out` (medido 4× mais rápido no Atlas) | `config.modoLimpezaCamada2` | `merge_runid` se a collection precisar ser shardada. Ver README, "Dois modos de limpeza". |
-| 15 | Duas camadas ou MV simples | duas camadas | arquitetura | No benchmark, `$out` direto da raw (36,5 s) foi mais rápido que o job incremental. Duas camadas só compensam com raw de retenção curta, correção de atrasos por dia ou troca de turno sem reprocessar. |
+| 15 | Grão do bucket (se incremental) | turno | `config.granularidadeBucket` | `hora` permite blocos de 2 h/4 h e trocar turno sem reler a raw, ao custo de ~24 buckets/dia por trecho/veículo em vez de ≤ 4. |
 | 14 | Janela | 180 dias, D-1 a D-180 | `config.janelaDias` | Janela maior aumenta n por chave e dilui mudanças recentes de trânsito. |
