@@ -30,6 +30,17 @@ UTC = timezone.utc
 LOCK_ID = "materializacao"
 
 
+import re as _re
+
+# host:porta de servidores em mensagens de erro de driver: não saem do processo
+_HOST = _re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*\.(?:mongodb\.net|mongo\.cosmos\.azure\.com|internal)(?::\d+)?"
+                    r"|\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?")
+
+
+def mascarar(texto: str) -> str:
+    return _HOST.sub("<host>", texto)
+
+
 class LockOcupado(RuntimeError):
     pass
 
@@ -96,11 +107,11 @@ def com_retry(fn, *args, tentativas: int = 4, base_s: float = 0.5, **kwargs):
             rotulos = ("TransientTransactionError", "RetryableWriteError")
             if not any(e.has_error_label(r) for r in rotulos) or i == tentativas - 1:
                 raise
-            erros.append(f"{type(e).__name__}: {str(e)[:200]}")
+            erros.append(mascarar(f"{type(e).__name__}: {str(e)[:200]}"))
         except TRANSITORIOS as e:
             if i == tentativas - 1:
                 raise
-            erros.append(f"{type(e).__name__}: {str(e)[:200]}")
+            erros.append(mascarar(f"{type(e).__name__}: {str(e)[:200]}"))
         time.sleep(base_s * 2 ** i)
 
 
@@ -354,7 +365,7 @@ def materializar(db: Database, asof: str | date | None = None, camada: str = "to
     try:
         adquirir_lock(db, owner, lease_s)
     except Exception as e:
-        msg = str(e) if isinstance(e, LockOcupado) else f"{type(e).__name__}: {e}"
+        msg = str(e) if isinstance(e, LockOcupado) else mascarar(f"{type(e).__name__}: {e}")
         db.job_runs.update_one({"runId": run_id}, {"$set": {
             "status": "erro", "erro": msg, "finalizadoEm": _agora()}})
         raise
@@ -384,7 +395,7 @@ def materializar(db: Database, asof: str | date | None = None, camada: str = "to
         return {**run, **fim}
     except Exception as e:
         db.job_runs.update_one({"runId": run_id}, {"$set": {
-            "status": "erro", "erro": f"{type(e).__name__}: {e}", "finalizadoEm": _agora()}})
+            "status": "erro", "erro": mascarar(f"{type(e).__name__}: {e}"), "finalizadoEm": _agora()}})
         raise
     finally:
         liberar_lock(db, owner)

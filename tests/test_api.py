@@ -113,3 +113,20 @@ def test_camada2_sozinha_com_turno_desatualizado_e_recusada(cli):
     cli.post("/api/config", json={"mudancas": {"regraNoite": "dia_operacional"}})
     r = cli.post("/api/job", json={"asOf": "2026-10-16", "camada": "2"})
     assert r.status_code == 400 and "outra config" in r.json()["erro"]
+
+
+def test_api_nao_expoe_host_do_job(cli):
+    cli.post("/api/job", json={"asOf": "2026-10-16"})
+    texto = cli.get("/api/job_runs").text + cli.get("/api/estado").text
+    assert '"owner"' not in texto
+
+
+def test_erros_nao_vazam_host_do_cluster(cli, db):
+    from frota.job import mascarar
+    assert mascarar("AutoReconnect: cluster0-shard-00-01.abc123.mongodb.net:27017: closed") == \
+        "AutoReconnect: <host>: closed"
+    assert mascarar("timeout 10.0.3.7:27017") == "timeout <host>"
+    db.job_runs.insert_one({"runId": "x", "asOf": "2026-10-16", "camada": "todas", "status": "erro",
+                            "iniciadoEm": __import__("datetime").datetime.now(),
+                            "erro": "AutoReconnect: c-shard-00-01.zz9.mongodb.net:27017"})
+    assert "mongodb.net" not in cli.get("/api/job_runs").text

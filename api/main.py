@@ -22,7 +22,7 @@ from frota.capo import badges, metadados, pipelines_atuais
 from frota.consulta import fallback, onthefly
 from frota.db import get_db
 from frota.janela import DOW_NOMES, derivar_chave, hoje_local, inicio_dia, janela, parse_asof
-from frota.job import LockOcupado, materializar
+from frota.job import LockOcupado, mascarar, materializar
 from frota.mongosh import jsonavel, para_mongosh, pipeline_mongosh
 from frota.simulacao import asof_atual, avancar, injetar_atrasado
 
@@ -43,15 +43,28 @@ def db():
     return d
 
 
+_PRIVADOS = {"owner"}  # host:pid do processo do job: diagnóstico interno, não sai na API
+
+
+def _sem_privados(obj):
+    if isinstance(obj, str):
+        return mascarar(obj)
+    if isinstance(obj, dict):
+        return {k: _sem_privados(v) for k, v in obj.items() if k not in _PRIVADOS}
+    if isinstance(obj, list):
+        return [_sem_privados(v) for v in obj]
+    return obj
+
+
 def J(obj, status: int = 200):
-    return JSONResponse(jsonavel(obj), status_code=status)
+    return JSONResponse(_sem_privados(jsonavel(obj)), status_code=status)
 
 
 @app.exception_handler(PyMongoError)
 def _mongo_fora(_, exc):
     _boot["ok"] = False
     return J({"erro": "MongoDB indisponível ou erro de servidor",
-              "detalhe": f"{type(exc).__name__}: {str(exc)[:300]}",
+              "detalhe": mascarar(f"{type(exc).__name__}: {str(exc)[:300]}"),
               "acao": "suba o banco com `make up` e recarregue"}, 503)
 
 
