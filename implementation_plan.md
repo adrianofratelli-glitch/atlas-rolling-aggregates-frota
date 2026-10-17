@@ -1,6 +1,6 @@
 # Plano de implementação
 
-Estado em 2026-10-16. Versão 1.0.0 (repo privado, release v1.0.0).
+Estado em 2026-10-16. Versão 1.0.1 (repo privado, releases v1.0.0 e v1.0.1; empacotada no Demo Player 0.7.0).
 
 ## Concluído
 

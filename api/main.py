@@ -26,7 +26,7 @@ from frota.job import LockOcupado, mascarar, materializar
 from frota.mongosh import jsonavel, para_mongosh, pipeline_mongosh
 from frota.simulacao import asof_atual, avancar, injetar_atrasado
 
-app = FastAPI(title="Agregados em janela móvel — fallback de ETA", version="1.0.0")
+app = FastAPI(title="Agregados em janela móvel — fallback de ETA", version="1.0.1")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5410",
                                                   "http://localhost:5410"],
                    allow_methods=["*"], allow_headers=["*"])

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1 (2026-10-16)
+
+- The API no longer exposes the job owner (`host:pid`) and masks server `host:port` in driver error messages (`job_runs`, `/api/estado`, 503 details). Found while recording the offline replica: a real `AutoReconnect` on Atlas carried the cluster hostname.
+- Inline portfolio favicon: the UI no longer requests `/favicon.ico` (a console 404 in the offline player).
+- Packaged in the PoV Demo Player 0.7.0 as `rolling`.
+
 ## 1.0.0 (2026-10-16)
 
 First release.
