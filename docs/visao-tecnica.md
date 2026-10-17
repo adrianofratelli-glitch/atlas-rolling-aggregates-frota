@@ -336,9 +336,9 @@ concorrente sai com código 3 e fica registrado em `job_runs` com `status: "erro
   verificando 5410/8410 livres.
 - **Portas**: reservadas em `PoVs/PORTS.md` e `check-pov-ports.sh` (5410/8410 e 27027
   do Docker local).
-- **Player** (`pov-demo-player`): não registrada. O Player exige réplica gravada por PoV
-  (`recordings/<id>`, `demo-config.js`, fixtures e bundle), trabalho próprio, não um
-  registro.
+- **Player** (`pov-demo-player` 0.7.0): réplica offline `rolling`, com gravação real no
+  Atlas (`npm run capture:rolling` com o backend em 8410). Avançar janela, atraso e config
+  respondem, offline, que exigem a PoV ao vivo.
 - Por padrão a POV usa o cluster compartilhado (`MONGODB_URI` do `.env.shared`); sem ele,
   o MongoDB local em Docker.
 
