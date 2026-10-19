@@ -22,7 +22,7 @@ A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0
 10. Limpeza dos bancos antigos (Atlas e local) e alvos do Makefile.
 11. Docs públicas, prints do Atlas real, portfólio e grafo.
 
-103 testes no Atlas (9.0.4) e no MongoDB 8.0.34 local.
+105 testes no Atlas (9.0.4) e no MongoDB 8.0.34 local.
 
 ## Não feito / próximos passos
 

@@ -79,7 +79,8 @@ flowchart LR
 - **Any other period** (specific dates, last N days) **or one specific vehicle** runs the
   same computation on the raw collection with the compound index
   `{origem, destino, tipoVeiculo, observadoEm}` (`veiculoId` is one more equality in the
-  same `$match`; no extra index). With "guardar o resultado" (ticked by default in the
+  same `$match`; no extra index, so the index still walks the whole leg × type and the UI
+  shows that number as "documents read", with the vehicle's own count below). With "guardar o resultado" (ticked by default in the
   UI; the API field `persistir` stays explicit), `$merge` into `consultas_salvas` is the
   last stage of the same aggregate; the key is a hash of the normalized filter, vehicle
   included. Absolute periods keep the result for 1–30 days (default 7); relative periods
@@ -166,18 +167,18 @@ host, port or URI.
 
 ## Tests
 
-The same 103 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
+The same 105 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
 portfolio cluster) and **local Docker 8.0.34**.
 
 | File | Covers |
 |---|---|
 | `test_janela.py` | half-open window, today excluded, `$lt`, São Paulo time including a 2018 DST date, hour ranges across midnight, periods, next job |
 | `test_job.py` | today excluded, job idempotent, two overlapping runs lose nothing, a key that left the window is removed, `$isoDayOfWeek` at local midnight, rounding, masked errors in `job_runs` |
-| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, a specific vehicle goes to the raw even in the default window (key includes it, invalid vehicle → 422, saved until the next job), absolute vs relative validity (an absolute period ending today expires at the next job), period without raw data (no `$merge` shown), partially outside retention (warning), raw docs read = first `$match` count, `geradoPor` = latest ok run |
+| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, a specific vehicle goes to the raw even in the default window (key includes it, invalid vehicle → 422, saved until the next job, `docsExaminados` = what the index walks), absolute vs relative validity (an absolute period ending today expires at the next job), period without raw data (no `$merge` shown), partially outside retention (warning), raw docs read = first `$match` count, `geradoPor` = latest ok run |
 | `test_ingestao.py`, `test_previa.py` | ingestion moves only what already happened and never loses arrivals; tomorrow's preview |
 | `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, 15 vehicles per type spread over legs and hours, reset with per-batch progress; validators and indexes read from the database |
 | `test_trigger_export.py` | exported trigger pipelines equal the Python ones; Functions run in Node |
-| `test_api.py`, `test_operadores.py` | route contracts, vehicles per type in `/api/opcoes`, the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
+| `test_api.py`, `test_operadores.py` | route contracts, vehicles per type in `/api/opcoes` (cache refreshed by a new job run), the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
 
 ## Limitations
 

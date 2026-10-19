@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -29,7 +30,14 @@ from frota.operadores import bloco_query
 from frota.pipelines import job as job_pipe
 from frota.schemas import TIPOS_VEICULO
 
-app = FastAPI(title="Agregados em janela móvel — fallback de ETA", version="2.1.0")
+@asynccontextmanager
+async def _ciclo(_app):
+    # aquece a lista de veículos sem travar a subida da API
+    threading.Thread(target=_aquecer_veiculos, daemon=True).start()
+    yield
+
+
+app = FastAPI(lifespan=_ciclo, title="Agregados em janela móvel — fallback de ETA", version="2.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5410",
                                                   "http://localhost:5410"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -42,7 +50,8 @@ _TZ = ZoneInfo(settings.TZ)
 BASE = job_pipe.COLECAO
 _PRIVADOS = {"owner"}
 _cache_previa: dict = {}  # a prévia agrupa 180 dias de raw (segundos no Atlas): ver previa.proximo
-_cache_veiculos: dict = {}  # banco → veículos por tipo; a raw só muda de frota no reset
+# (banco, runId do último job ok) → veículos por tipo: seed ou job novo (API ou CLI) invalida
+_cache_veiculos: dict = {}
 
 
 def agora_utc() -> datetime:
@@ -141,9 +150,21 @@ def _trechos(d) -> list[dict]:
 
 
 def _veiculos(d) -> dict[str, list[str]]:
-    if d.name not in _cache_veiculos:
-        _cache_veiculos[d.name] = cenario.veiculos_por_tipo(d)
-    return _cache_veiculos[d.name]
+    run = d.job_runs.find_one({"status": "ok"}, {"runId": 1}, sort=[("iniciadoEm", -1)])
+    chave = (d.name, run.get("runId") if run else None)
+    if chave not in _cache_veiculos:
+        _cache_veiculos.clear()  # só a versão atual importa
+        _cache_veiculos[chave] = cenario.veiculos_por_tipo(d)
+    return _cache_veiculos[chave]
+
+
+def _aquecer_veiculos() -> None:
+    """Calcula a lista uma vez ao subir; se falhar, a primeira requisição calcula."""
+    try:
+        _veiculos(db())
+    except Exception:  # noqa: BLE001 — aquecimento é opcional
+        pass
+
 
 
 @app.get("/api/opcoes")

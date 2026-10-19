@@ -66,6 +66,8 @@ def passo(pg, n: int, w: int) -> None:
         pg.wait_for_selector('button:has-text("Calcular"):not([disabled])', timeout=LONGO)
         checar(valor in (pg.locator(".gaveta pre").first.text_content() or ""),
                "passo 4: query sob demanda sem o veiculoId")
+        checar("do veículo" in (pg.locator(".contas dd.sub").first.text_content() or ""),
+               "passo 4: custo do veículo sem a linha do que o índice percorre")
         if not a.sem_escrita:
             checar("salvo até" in pg.locator(".selo-detalhe").inner_text(),
                    "passo 4: consulta de veículo não foi guardada")

@@ -149,6 +149,7 @@ input[type="checkbox"] { flex: none; width: 18px; height: 18px; min-height: 0 !i
 .check { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; color: var(--text-sec); }
 .persistir { align-items: center; }
 .ampliacao { margin: 0; }
+.ampliacao .tag { margin-left: 0; }
 
 /* resultado e selo */
 .resultado { display: grid; gap: 10px; padding: 16px 18px; border-radius: 14px; background: var(--bg-card); border: 1px solid var(--border-subtle); min-width: 0; }
@@ -162,6 +163,7 @@ input[type="checkbox"] { flex: none; width: 18px; height: 18px; min-height: 0 !i
 .contas dt { font-family: var(--mono); font-size: 11px; color: var(--text-muted); }
 .contas dd { margin: 0; font-family: var(--mono); font-size: 14px; }
 .contas .custo dd { font-weight: 700; color: var(--text); }
+.contas .custo dd.sub { font-weight: 400; font-size: 11.5px; color: var(--text-muted); max-width: 30ch; }
 .sem-amostra { margin: 0; font-size: 17px; color: var(--warning); }
 .selo-linha { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .selo { display: inline-flex; align-items: center; gap: 6px; padding: 3px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1px solid; }

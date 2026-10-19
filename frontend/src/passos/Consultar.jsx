@@ -5,15 +5,11 @@ import FiltroCenario, { useConsultaAuto } from '../comp/FiltroCenario.jsx'
 import GavetaQuery from '../comp/GavetaQuery.jsx'
 import Resultado from '../comp/Resultado.jsx'
 
-const AMPLIADO = {
-  todos_os_dias: 'todos os dias da semana nas mesmas horas',
-  dia_inteiro: 'o dia inteiro nos dias pedidos',
-}
-
+// O detalhe da API já descreve o nível usado ("poucas amostras: ampliado para …",
+// "sem histórico suficiente…"); aqui entra só a etiqueta, para não repetir o texto.
 function Ampliacao({ nivel }) {
   if (!nivel || nivel === 'pedido') return null
-  const texto = AMPLIADO[nivel] ? `Poucas amostras: ampliado para ${AMPLIADO[nivel]}` : 'Poucas amostras: nem ampliando há histórico suficiente'
-  return <p className="nota ampliacao">{texto} <span className="tag alerta">regra a validar com o cliente</span></p>
+  return <p className="ampliacao"><span className="tag alerta">regra a validar com o cliente</span></p>
 }
 
 // Uma consulta só: a API decide se soma a base pronta ou calcula na raw (e guarda).
@@ -86,7 +82,7 @@ export default function Consultar({ opcoes, filtro, setFiltro, estado, ocupado }
           </>
         )}
       </FiltroCenario>
-      <p className="frase">Se a média já estiver pré-calculada, vem da base pronta; senão é calculada agora e guardada.</p>
+      <p className="frase">Se a média já estiver pré-calculada, vem da base pronta; senão é calculada agora (e guardada, se marcado).</p>
       {erro && <p className="aviso erro" role="alert">{erro}</p>}
       <Resultado resposta={resposta} carregando={carregando}
         desatualizado={!auto && !!resposta && calc.corpo !== chave} />

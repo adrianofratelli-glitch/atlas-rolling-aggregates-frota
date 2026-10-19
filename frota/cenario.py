@@ -140,7 +140,7 @@ def _ddmm(dt: datetime) -> str:
 
 
 def _metricas(doc: dict | None, docs_lidos: int, dias: list[int], horas: list[int],
-              ms: float) -> dict:
+              ms: float, docs_examinados: int | None = None) -> dict:
     n = int(doc["n"]) if doc else 0
     media = media_km = desvio = None
     if n:
@@ -148,7 +148,7 @@ def _metricas(doc: dict | None, docs_lidos: int, dias: list[int], horas: list[in
         media_km = doc["somaKm"] / n
         desvio = math.sqrt(max(0.0, doc["somaQuadMin"] / n - media * media))
     return {"n": n, "mediaMin": media, "desvioMin": desvio, "mediaKm": media_km,
-            "docsLidos": docs_lidos, "diasSomados": dias, "horas": horas, "ms": ms}
+            "docsLidos": docs_lidos, "docsExaminados": docs_examinados, "diasSomados": dias, "horas": horas, "ms": ms}
 
 
 def _resposta(selo: str, detalhe: str, query: dict, *, nivel=None, resultado=None,
@@ -252,8 +252,15 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
     ms = round((time.perf_counter() - t0) * 1000, 1)
     # docs lidos = o que passou pelo primeiro $match (rota + período), antes do filtro de
     # dia/hora: é o custo real de ler a raw. `n` continua sendo as amostras que sobraram.
-    lidos = db[pl.RAW].count_documents(p[0].estagio["$match"])
-    res = _metricas(doc, lidos, dias, horas, ms)
+    filtro = p[0].estagio["$match"]
+    lidos = db[pl.RAW].count_documents(filtro)
+    # com veículo, o índice {o, d, tipo, observadoEm} percorre o trecho × tipo inteiro e o
+    # veiculoId é filtrado depois: esse é o custo de verdade, mostrado ao lado
+    examinados = None
+    if f.veiculoId:
+        examinados = db[pl.RAW].count_documents(
+            {k: v for k, v in filtro.items() if k != "veiculoId"})
+    res = _metricas(doc, lidos, dias, horas, ms, examinados)
     if salvar and doc:
         return _resposta("sob_demanda", f"calculado agora · salvo até {_ddmm(salvar['expiraEm'])}",
                          query, resultado=res, expira=salvar["expiraEm"], aviso=aviso)

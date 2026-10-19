@@ -26,7 +26,11 @@ export default function Resultado({ resposta, carregando, desatualizado }) {
             <div><dt>amostras</dt><dd>{int(r.n)}</dd></div>
             <div><dt>dias somados</dt><dd>{descreveDias(r.diasSomados)}</dd></div>
             <div><dt>horas</dt><dd>{descreveHoras(r.horas)}</dd></div>
-            <div className="custo"><dt>docs lidos</dt><dd>{int(r.docsLidos)}</dd></div>
+            {r.docsExaminados != null ? (
+              // com veículo, o índice percorre o trecho × tipo inteiro: esse é o custo
+              <div className="custo"><dt>docs lidos</dt><dd>{int(r.docsExaminados)}</dd>
+                <dd className="sub">{int(r.docsLidos)} do veículo · o índice percorre o trecho × tipo inteiro</dd></div>
+            ) : <div className="custo"><dt>docs lidos</dt><dd>{int(r.docsLidos)}</dd></div>}
             <div title="Inclui a rede até o banco: no Atlas é quase todo ida e volta. O custo está em docs lidos.">
               <dt>ida e volta ao banco</dt><dd>{num(r.ms, 1)} ms</dd></div>
           </dl>

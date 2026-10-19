@@ -252,6 +252,7 @@ def test_docs_lidos_raw_conta_o_primeiro_match(db):
          "observadoEm": {"$gte": ini, "$lt": fim}})
     res = r["resultado"]
     assert res["docsLidos"] == lidos and lidos > res["n"] > 0
+    assert res["docsExaminados"] is None  # sem veículo, lidos já é o que o índice percorre
     # persistido: mesmo número de docs lidos na raw
     r2 = cenario.consultar(db, _filtro(t, dias=[2], hi=7, hf=9, persistir=True,
                                        periodo={"tipo": "ultimos", "dias": 30}), AGORA)
@@ -303,6 +304,8 @@ def test_veiculo_vai_a_raw_mesmo_na_janela_padrao(db):
     assert r["resultado"]["docsLidos"] == lidos
     assert 0 < lidos < db.trecho_observacoes.count_documents(rota)
     assert 0 < r["resultado"]["n"] <= lidos
+    # custo honesto: o índice percorre o trecho × tipo inteiro; o veiculoId filtra depois
+    assert r["resultado"]["docsExaminados"] == db.trecho_observacoes.count_documents(rota)
     # sem veículo, a mesma janela padrão continua vindo da base pronta
     assert cenario.consultar(db, _filtro(t), AGORA)["selo"] == "job_diario"
 

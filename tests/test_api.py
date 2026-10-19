@@ -59,6 +59,33 @@ def test_opcoes(cli):
     assert o["veiculos"] == {t: [f"VEI-{t}-{i}" for i in (1, 2, 3)] for t in ("TRUCK", "CARRETA")}
 
 
+def test_veiculos_cache_por_run_do_job(cli, db_sessao, monkeypatch):
+    from datetime import timedelta
+    chamadas = []
+    original = main.cenario.veiculos_por_tipo
+    monkeypatch.setattr(main.cenario, "veiculos_por_tipo",
+                        lambda d: chamadas.append(1) or original(d))
+    a = cli.get("/api/opcoes").json()["veiculos"]
+    cli.get("/api/opcoes")
+    assert len(chamadas) == 1
+    ok = db_sessao.job_runs.find_one({"status": "ok"}, sort=[("iniciadoEm", -1)])
+    novo = {**ok, "_id": "run-cache-teste", "runId": "run-cache-teste",
+            "iniciadoEm": ok["iniciadoEm"] + timedelta(minutes=1)}
+    db_sessao.job_runs.insert_one(novo)  # um seed/job pela CLI gera um run novo
+    try:
+        assert cli.get("/api/opcoes").json()["veiculos"] == a
+        assert len(chamadas) == 2
+    finally:
+        db_sessao.job_runs.delete_one({"_id": "run-cache-teste"})
+
+
+def test_aquecer_veiculos_nao_quebra(monkeypatch):
+    monkeypatch.setattr(main, "_cache_veiculos", {})
+    monkeypatch.setattr(main, "db", lambda: (_ for _ in ()).throw(RuntimeError("fora")))
+    main._aquecer_veiculos()  # falha engolida: a primeira requisição calcula
+    assert main._cache_veiculos == {}
+
+
 def test_cenario_veiculo_invalido_422(cli):
     r = cli.post("/api/cenario", json={**CEN, "veiculoId": "VEI-TRUCK-77"})
     assert r.status_code == 422 and "veículo" in r.json()["erro"].lower()

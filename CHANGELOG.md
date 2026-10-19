@@ -12,19 +12,21 @@
 - **A specific vehicle always goes to the raw**, even in the default window: the base is
   per vehicle type, never per vehicle. `veiculoId` is validated (`VEI-<TYPE>-<n>`, must
   exist for that type; 422 otherwise), enters the saved-result key and the first `$match`
-  (same compound index, no new index). Default window + vehicle is relative: the saved
+  (same compound index, no new index). The cost shown is honest: `docsExaminados` (what the
+  index walks, the whole leg × type) next to the vehicle's own count. Default window + vehicle is relative: the saved
   result expires at the next job.
 - "guardar o resultado" is **ticked by default** in the UI (the API `persistir` field stays
   explicit); validity 1–30 days for specific dates, "until the next job" for relative
   periods.
-- `/api/opcoes` returns `veiculos` per type, read from the raw (natural order, cached until
-  the next reset).
+- `/api/opcoes` returns `veiculos` per type, read from the raw (natural order, cached per
+  latest ok job run, so a CLI seed or job also refreshes it; warmed in the background at
+  startup).
 - Generator: 15 vehicles per type in the demo profile (3 in the test profile); same volume
   and same sampled times, only the distribution among vehicles changed.
 - `$merge` explanation shortened to "Grava o resultado numa collection persistente."; step 3
   shows that sentence plus the "materialized view" label.
 - New exported pipeline `docs/pipelines/cenario-raw-veiculo.*`.
-- 103 tests on Atlas (9.0.4) and local MongoDB 8.0.34.
+- 105 tests on Atlas (9.0.4) and local MongoDB 8.0.34.
 
 ## 2.0.0 (2026-10-19)
 

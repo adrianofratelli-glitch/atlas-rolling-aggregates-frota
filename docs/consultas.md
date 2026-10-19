@@ -113,8 +113,9 @@ db.trecho_observacoes.aggregate([
 [ { n: 14, somaMin: 1528.06, somaQuadMin: 183642.88, somaKm: 768.62 } ]
 ```
 
-Média ≈ 109,1 min em 14 amostras; 432 observações do veículo no período ("docs lidos" na
-tela). O `explain` mostra o custo de verdade: `IXSCAN origem_1_destino_1_tipoVeiculo_1_observadoEm_1`
+Média ≈ 109,1 min em 14 amostras; 432 observações do veículo no período. O `explain` mostra
+o custo de verdade, e é ele que a tela mostra como "docs lidos" (6.480, com a sub-linha
+"432 do veículo"; a API devolve `docsExaminados`): `IXSCAN origem_1_destino_1_tipoVeiculo_1_observadoEm_1`
 com 6480 chaves e 6480 documentos examinados (todas as observações do trecho × tipo na
 janela; o `veiculoId` é filtrado depois do índice). Com "guardar o resultado" (o padrão na
 tela), o fim do pipeline é o mesmo `$merge` e o salvo vale até o próximo job

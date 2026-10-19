@@ -180,7 +180,7 @@ botão do passo 3. Implantação: `make trigger-deploy` (ver `atlas-trigger/READ
 
 ## Compatibilidade de operadores
 
-Executado e testado (103 testes) em **MongoDB 8.0.34** (Docker, replica set de 1 nó) e
+Executado e testado (105 testes) em **MongoDB 8.0.34** (Docker, replica set de 1 nó) e
 **MongoDB 9.0.4** (Atlas). As versões mínimas são as da documentação.
 
 | Operador / recurso | Uso | Disponível desde |
