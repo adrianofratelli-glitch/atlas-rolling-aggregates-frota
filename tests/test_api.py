@@ -26,6 +26,7 @@ def semeado(db_sessao):
 def cli(semeado, monkeypatch):
     monkeypatch.setattr(settings, "MONGODB_DB", settings.MONGODB_TEST_DB)
     monkeypatch.setitem(main._reset, "resetando", False)
+    monkeypatch.setattr(main, "_cache_veiculos", {})  # outro módulo pode ter semeado o banco
     return TestClient(main.app, raise_server_exceptions=False)
 
 
@@ -54,6 +55,13 @@ def test_opcoes(cli):
                              "esparso"} <= set(o["trechos"][0])
     assert "CARRETA" in o["tipos"] and set(o["atalhos"]) == {"manha", "tarde", "noite"}
     assert o["dias"]["1"] == "segunda"
+    # perfil de teste: 3 veículos por tipo, em ordem natural
+    assert o["veiculos"] == {t: [f"VEI-{t}-{i}" for i in (1, 2, 3)] for t in ("TRUCK", "CARRETA")}
+
+
+def test_cenario_veiculo_invalido_422(cli):
+    r = cli.post("/api/cenario", json={**CEN, "veiculoId": "VEI-TRUCK-77"})
+    assert r.status_code == 422 and "veículo" in r.json()["erro"].lower()
 
 
 def test_raw_schema_do_banco(cli):

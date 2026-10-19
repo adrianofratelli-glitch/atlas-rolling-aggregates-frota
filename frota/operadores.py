@@ -8,7 +8,7 @@ EXPLICACOES: dict[str, str] = {
     "$set": "acrescenta campos calculados a cada documento sem tirar os que já existem.",
     "$group": "junta os documentos que têm a mesma chave e calcula totais para cada grupo.",
     "$project": "escolhe quais campos saem e calcula os novos.",
-    "$merge": "grava o resultado numa collection persistente, substituindo o documento da mesma chave — é a 'materialized view'.",
+    "$merge": "Grava o resultado numa collection persistente.",
     "$isoDayOfWeek": "dia da semana no fuso de São Paulo (1 = segunda … 7 = domingo).",
     "$hour": "hora do dia (0 a 23) no fuso de São Paulo.",
     "$sum": "soma os valores, ou conta os documentos quando o valor é 1.",

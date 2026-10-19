@@ -1,7 +1,8 @@
 """Pipelines dos cenários: somar a base pronta ou agregar a raw sob demanda.
 
 Na janela padrão a resposta sai da soma de documentos já materializados pelo job (poucos
-docs, sem recalcular nada). Fora dela, o mesmo cálculo roda na raw; se o usuário pedir para
+docs, sem recalcular nada). Fora dela, ou com um veículo específico, o mesmo cálculo roda
+na raw; se o usuário pedir para
 salvar, o `$merge` é o último estágio do próprio aggregate que calcula o resultado.
 """
 from __future__ import annotations
@@ -45,10 +46,12 @@ def base(f: "Filtro", dias: list[int], horas: list[int]) -> list[Estagio]:
 def raw(f: "Filtro", inicio: datetime, fim: datetime, horas: list[int],
         salvar_em: dict | None) -> list[Estagio]:
     """`salvar_em` = {"_id": chave, "periodo": "absoluto"|"relativo", "expiraEm": datetime}."""
+    filtro = {**_rota(f), **({"veiculoId": f.veiculoId} if f.veiculoId else {}),
+              "observadoEm": {"$gte": inicio, "$lt": fim}}
+    quem = "do veículo escolhido" if f.veiculoId else "do tipo de veículo"
     p = [
-        Estagio("Pega as observações da rota e do tipo de veículo no período pedido "
-                "(o fim fica de fora).",
-                {"$match": {**_rota(f), "observadoEm": {"$gte": inicio, "$lt": fim}}}),
+        Estagio(f"Pega as observações da rota e {quem} no período pedido (o fim fica de fora).",
+                {"$match": filtro}),
         Estagio("Descobre o dia da semana (1 = segunda … 7 = domingo) e a hora, no horário de São Paulo.",
                 {"$set": {"dow": {"$isoDayOfWeek": {"date": "$observadoEm", "timezone": TZ}},
                           "hora": {"$hour": {"date": "$observadoEm", "timezone": TZ}}}}),

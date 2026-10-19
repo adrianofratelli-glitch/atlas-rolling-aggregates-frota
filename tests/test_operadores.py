@@ -56,4 +56,4 @@ def test_explicacoes_terminam_com_ponto():
     assert [op for op, txt in EXPLICACOES.items() if not txt.endswith(".")] == []
     assert EXPLICACOES["$isoDayOfWeek"] == ("dia da semana no fuso de São Paulo "
                                             "(1 = segunda … 7 = domingo).")
-    assert EXPLICACOES["$merge"].endswith("é a 'materialized view'.")
+    assert EXPLICACOES["$merge"] == "Grava o resultado numa collection persistente."

@@ -278,6 +278,12 @@ def exportar_docs() -> None:
             "(TTL apaga quando passa do expiraEm).",
             pl_cenario.RAW, pl_cenario.raw(f, ini, fim, f.horas(), {
                 "_id": "<chave do filtro>", "periodo": "relativo", "expiraEm": proximo_job(agora)}))
+    fv = Filtro("BASE-001", "POSTO-11", "CARRETA", [1, 2, 3, 4, 5], 6, 12, veiculoId="VEI-CARRETA-7")
+    _salvar("cenario-raw-veiculo",
+            "Cenário de um veículo específico na janela padrão: a base é por tipo, então vai à "
+            "raw (o $match inclui veiculoId) e salva até o próximo job.",
+            pl_cenario.RAW, pl_cenario.raw(fv, ini, fim, fv.horas(), {
+                "_id": "<chave do filtro>", "periodo": "relativo", "expiraEm": proximo_job(agora)}))
 
 
 def exportar_functions() -> None:

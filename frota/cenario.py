@@ -1,5 +1,7 @@
 """Cenários de ETA: base pronta na janela padrão, raw sob demanda fora dela.
 
+Base pronta só quando o período é a janela padrão e não há veículo específico (a base é
+por tipo, nunca por veículo). Com veículo, a consulta vai sempre à raw.
 Na janela padrão a resposta é a soma de documentos que o job diário já materializou; se
 houver menos de MIN_AMOSTRAS, amplia (todos os dias da semana nas mesmas horas, depois o dia
 inteiro nos dias pedidos). Fora da janela, agrega a raw na hora e, se pedido, salva o
@@ -11,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -36,6 +39,7 @@ SEM_RAW = "sem dados brutos para esse período"
 RAW_PARCIAL = "parte do período não tem mais dados brutos"
 # instante qualquer: `validar` só confere a forma do período (datas e "ultimos" não dependem dele)
 _QUALQUER = datetime(2000, 1, 1, tzinfo=UTC)
+_VEICULO = re.compile(r"VEI-([A-Z]+)-([1-9][0-9]*)")
 
 
 @dataclass
@@ -49,6 +53,7 @@ class Filtro:
     periodo: dict = field(default_factory=lambda: {"tipo": "padrao"})
     persistir: bool = False
     ttlDias: int = TTL_SALVO_PADRAO_DIAS
+    veiculoId: str | None = None
 
     def validar(self) -> None:
         for nome in ("origem", "destino"):
@@ -69,6 +74,15 @@ class Filtro:
         periodo_para_intervalo(self.periodo, _QUALQUER)
         if not _inteiro(self.ttlDias) or not 1 <= self.ttlDias <= TTL_SALVO_MAX_DIAS:
             raise ValueError(f"A validade do salvo deve ficar entre 1 e {TTL_SALVO_MAX_DIAS} dias.")
+        if self.veiculoId is not None:
+            m = _VEICULO.fullmatch(self.veiculoId) if isinstance(self.veiculoId, str) else None
+            if not m or m.group(1) != self.tipoVeiculo:
+                raise ValueError(f"Veículo inválido: use VEI-{self.tipoVeiculo}-<número>, "
+                                 f"de um veículo do tipo {self.tipoVeiculo}.")
+
+    def usa_base(self) -> bool:
+        """A base pronta só atende a janela padrão de um tipo inteiro."""
+        return self.periodo.get("tipo") == "padrao" and self.veiculoId is None
 
     def dias_ordenados(self) -> list[int]:
         return sorted(set(self.dias))
@@ -77,8 +91,11 @@ class Filtro:
         return horas_da_faixa(self.horaInicio, self.horaFim)
 
     def descricao(self) -> dict:
-        return {"origem": self.origem, "destino": self.destino, "tipoVeiculo": self.tipoVeiculo,
-                "dias": self.dias_ordenados(), "horas": self.horas(), "periodo": self.periodo}
+        d = {"origem": self.origem, "destino": self.destino, "tipoVeiculo": self.tipoVeiculo,
+             "dias": self.dias_ordenados(), "horas": self.horas(), "periodo": self.periodo}
+        if self.veiculoId:
+            d["veiculoId"] = self.veiculoId
+        return d
 
     def _periodo_resolvido(self, agora: datetime | None) -> dict:
         tipo = self.periodo.get("tipo")
@@ -96,8 +113,22 @@ class Filtro:
         canon = {"origem": self.origem, "destino": self.destino,
                  "tipoVeiculo": self.tipoVeiculo, "dias": self.dias_ordenados(),
                  "horas": self.horas(), "periodo": self._periodo_resolvido(agora)}
+        if self.veiculoId:
+            canon["veiculoId"] = self.veiculoId
         txt = json.dumps(canon, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
         return hashlib.sha1(txt.encode()).hexdigest()
+
+
+def veiculos_por_tipo(db: Database) -> dict[str, list[str]]:
+    """Veículos presentes na raw, por tipo, em ordem natural (VEI-X-2 antes de VEI-X-10)."""
+    grupos = db[pl.RAW].aggregate([{"$group": {"_id": {"t": "$tipoVeiculo", "v": "$veiculoId"}}}])
+    por_tipo: dict[str, list[str]] = {}
+    for g in grupos:
+        por_tipo.setdefault(g["_id"]["t"], []).append(g["_id"]["v"])
+    def natural(v: str):
+        m = _VEICULO.fullmatch(v)
+        return (0, int(m.group(2)), v) if m else (1, 0, v)
+    return {t: sorted(vs, key=natural) for t, vs in sorted(por_tipo.items())}
 
 
 def _inteiro(v) -> bool:
@@ -231,8 +262,14 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
     return _resposta("sob_demanda", detalhe, query, resultado=res, aviso=aviso)
 
 
-def consultar(db: Database, f: Filtro, agora: datetime) -> dict:
+def consultar(db: Database, f: Filtro, agora: datetime,
+              veiculos: dict[str, list[str]] | None = None) -> dict:
+    """`veiculos` = cache de `veiculos_por_tipo` (a API guarda; sem ele, lê da raw)."""
     f.validar()
-    if f.periodo.get("tipo") == "padrao":
+    if f.veiculoId is not None:
+        lista = (veiculos if veiculos is not None else veiculos_por_tipo(db)).get(f.tipoVeiculo, [])
+        if f.veiculoId not in lista:
+            raise ValueError(f"Veículo {f.veiculoId} não existe para o tipo {f.tipoVeiculo}.")
+    if f.usa_base():
         return _da_base(db, f, agora)
     return _sob_demanda(db, f, agora)

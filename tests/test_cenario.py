@@ -285,3 +285,53 @@ def test_gerado_por_usa_ultimo_run_ok(db):
         assert ontem.isoformat() in g["mongosh"]
     finally:
         db.job_runs.delete_many({"_id": {"$in": ["run-ok-teste", "run-erro-teste"]}})
+
+
+# ---- veículo específico (v2.1) ----------------------------------------------
+
+def test_veiculo_vai_a_raw_mesmo_na_janela_padrao(db):
+    t = _regulares(db)[0]
+    f = _filtro(t, veiculoId="VEI-TRUCK-1")
+    r = cenario.consultar(db, f, AGORA)
+    assert r["selo"] == "sob_demanda" and r["nivel"] is None
+    assert r["query"]["le"] == ["trecho_observacoes"]
+    assert "VEI-TRUCK-1" in r["query"]["mongosh"]
+    ini, fim = janela_padrao(HOJE)
+    rota = {"origem": t["origem"], "destino": t["destino"], "tipoVeiculo": "TRUCK",
+            "observadoEm": {"$gte": ini, "$lt": fim}}
+    lidos = db.trecho_observacoes.count_documents({**rota, "veiculoId": "VEI-TRUCK-1"})
+    assert r["resultado"]["docsLidos"] == lidos
+    assert 0 < lidos < db.trecho_observacoes.count_documents(rota)
+    assert 0 < r["resultado"]["n"] <= lidos
+    # sem veículo, a mesma janela padrão continua vindo da base pronta
+    assert cenario.consultar(db, _filtro(t), AGORA)["selo"] == "job_diario"
+
+
+def test_veiculo_padrao_salvo_expira_no_proximo_job(db):
+    t = _regulares(db)[0]
+    f = _filtro(t, veiculoId="VEI-TRUCK-2", persistir=True, ttlDias=20)
+    r = cenario.consultar(db, f, AGORA)
+    assert r["expiraEm"] == proximo_job(AGORA)
+    salvo = db.consultas_salvas.find_one()
+    assert salvo["periodo"] == "relativo" and salvo["filtro"]["veiculoId"] == "VEI-TRUCK-2"
+    assert cenario.consultar(db, f, AGORA)["detalhe"].startswith("lido do salvo")
+
+
+def test_chave_inclui_veiculo():
+    a = _filtro(periodo={"tipo": "ultimos", "dias": 30})
+    b = _filtro(periodo={"tipo": "ultimos", "dias": 30}, veiculoId="VEI-TRUCK-1")
+    c = _filtro(periodo={"tipo": "ultimos", "dias": 30}, veiculoId="VEI-TRUCK-2")
+    assert len({a.chave(AGORA), b.chave(AGORA), c.chave(AGORA)}) == 3
+
+
+def test_veiculo_invalido(db):
+    t = _regulares(db)[0]
+    for v in ("VEI-CARRETA-1", "VEI-TRUCK-0", "VEI-TRUCK-99", "XYZ", ""):
+        with pytest.raises(ValueError, match="eículo"):
+            cenario.consultar(db, _filtro(t, veiculoId=v), AGORA)
+
+
+def test_veiculos_por_tipo(db):
+    v = cenario.veiculos_por_tipo(db)
+    assert set(v) == {"TRUCK", "CARRETA"}
+    assert v["TRUCK"] == [f"VEI-TRUCK-{i}" for i in range(1, len(v["TRUCK"]) + 1)]

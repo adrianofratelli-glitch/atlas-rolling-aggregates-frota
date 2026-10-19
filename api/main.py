@@ -1,4 +1,4 @@
-"""API da POV v2: serve o roteiro guiado de 7 passos. A UI é só vitrine.
+"""API da POV v2: serve o roteiro guiado de 5 passos. A UI é só vitrine.
 
     uvicorn api.main:app --port 8410
 
@@ -29,7 +29,7 @@ from frota.operadores import bloco_query
 from frota.pipelines import job as job_pipe
 from frota.schemas import TIPOS_VEICULO
 
-app = FastAPI(title="Agregados em janela móvel — fallback de ETA", version="2.0.0")
+app = FastAPI(title="Agregados em janela móvel — fallback de ETA", version="2.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5410",
                                                   "http://localhost:5410"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -42,6 +42,7 @@ _TZ = ZoneInfo(settings.TZ)
 BASE = job_pipe.COLECAO
 _PRIVADOS = {"owner"}
 _cache_previa: dict = {}  # a prévia agrupa 180 dias de raw (segundos no Atlas): ver previa.proximo
+_cache_veiculos: dict = {}  # banco → veículos por tipo; a raw só muda de frota no reset
 
 
 def agora_utc() -> datetime:
@@ -139,9 +140,16 @@ def _trechos(d) -> list[dict]:
             for t in d.trechos.find({}).sort([("origem", 1), ("destino", 1)])]
 
 
+def _veiculos(d) -> dict[str, list[str]]:
+    if d.name not in _cache_veiculos:
+        _cache_veiculos[d.name] = cenario.veiculos_por_tipo(d)
+    return _cache_veiculos[d.name]
+
+
 @app.get("/api/opcoes")
 def opcoes():
-    return J({"trechos": _trechos(db()), "tipos": TIPOS_VEICULO,
+    d = db()
+    return J({"trechos": _trechos(d), "tipos": TIPOS_VEICULO, "veiculos": _veiculos(d),
               "atalhos": {k: {"inicio": a, "fim": b} for k, (a, b) in ATALHOS.items()},
               "dias": DOW_NOMES})
 
@@ -231,7 +239,8 @@ def cenario_api(body: dict = Body(...)):
     except TypeError as e:
         raise ValueError(f"Campos do cenário inválidos: {e}")
     f.validar()
-    return J(cenario.consultar(db(), f, agora_utc()))
+    d = db()
+    return J(cenario.consultar(d, f, agora_utc(), _veiculos(d)))
 
 
 @app.get("/api/proximo-job")
@@ -262,6 +271,7 @@ def _executar_reset(nome: str, agora: datetime) -> None:
         _reset.update(resetando=False, erro=erro, fim=agora_utc(),
                       **({} if erro else {"etapa": "pronto", "pct": 1.0}))
     _boot.clear()
+    _cache_veiculos.clear()
 
 
 @app.post("/api/reset")
