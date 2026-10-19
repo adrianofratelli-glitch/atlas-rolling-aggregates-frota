@@ -11,7 +11,7 @@ import pytest
 import frota
 from frota import seed as seed_mod
 from frota.db import EscritaRecusada, get_db
-from frota.gerador import gerar
+from frota.gerador import FATOR_TIPO, gerar
 from frota.janela import hoje_local, inicio_dia
 
 AGORA = datetime(2026, 10, 19, 15, 20, tzinfo=timezone.utc)
@@ -59,6 +59,26 @@ def test_perfil_demo_formato():
     assert sum(p["tipo"] == "base" for p in g["pontos"]) == 3
     assert sum(p["tipo"] == "posto" for p in g["pontos"]) == 9
     assert 300_000 <= len(g["observacoes"]) <= 400_000
+    por_tipo = {}
+    for o in g["observacoes"]:
+        por_tipo.setdefault(o["tipoVeiculo"], set()).add(o["veiculoId"])
+    assert {t: len(v) for t, v in por_tipo.items()} == {t: 15 for t in FATOR_TIPO}
+    assert por_tipo["TOCO"] == {f"VEI-TOCO-{i}" for i in range(1, 16)}
+
+
+def test_veiculos_espalhados_por_trecho_e_hora():
+    """Cada veículo aparece em todo trecho regular e em várias horas (sem viés fixo)."""
+    g = gerar(AGORA, 1, "teste")
+    reg = {t["_id"] for t in g["trechos"] if not t["esparso"]}
+    from zoneinfo import ZoneInfo
+    z = ZoneInfo("America/Sao_Paulo")
+    horas = {}
+    for o in g["observacoes"]:
+        if f"{o['origem']}|{o['destino']}" in reg:
+            horas.setdefault((o["origem"], o["destino"], o["veiculoId"]), set()).add(
+                o["observadoEm"].astimezone(z).hour)
+    assert len(horas) == len(reg) * 2 * 3
+    assert min(len(h) for h in horas.values()) >= 20
 
 
 def test_resetar_recusa_demo_sem_permissao(monkeypatch):

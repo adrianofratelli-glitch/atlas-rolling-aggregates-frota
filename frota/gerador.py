@@ -11,6 +11,8 @@ Determinismo: o resultado depende de `seed` + `perfil`; `agora` só desloca o ca
 (o sorteio de cada dia usa o deslocamento em relação a hoje, não a data absoluta).
 A contagem de observações por (trecho regular × tipo × dia × hora) é determinística pelo
 peso da hora, o que garante cobertura de toda célula dow×hora na janela de 180 dias.
+O veículo (`VEI-<TIPO>-1..N`) é escolhido em rodízio pela sequência do dia deslocada pelo
+dia: muda só a distribuição entre veículos, não o volume nem o sorteio dos tempos.
 """
 from __future__ import annotations
 
@@ -27,8 +29,9 @@ BASES = [  # (cidade, lon, lat)
 ]
 FATOR_TIPO = {"TOCO": 1.00, "TRUCK": 1.05, "CARRETA": 1.10, "BITREM": 1.18}
 PERFIS = {
-    "demo": {"bases": 3, "tipos": ["TOCO", "TRUCK", "CARRETA", "BITREM"], "dias": TTL_RAW_DIAS},
-    "teste": {"bases": 1, "tipos": ["TRUCK", "CARRETA"], "dias": 40},
+    "demo": {"bases": 3, "tipos": ["TOCO", "TRUCK", "CARRETA", "BITREM"], "dias": TTL_RAW_DIAS,
+             "veiculos": 15},
+    "teste": {"bases": 1, "tipos": ["TRUCK", "CARRETA"], "dias": 40, "veiculos": 3},
 }
 P_ESPARSO = 0.03
 SIGMA_RUIDO = 0.12
@@ -110,7 +113,7 @@ def gerar(agora: datetime, seed: int, perfil: str = "demo") -> dict:
     hoje = hoje_local(agora)
     obs: list[dict] = []
     fut: list[dict] = []
-    n_trechos = len(trechos)
+    n_veic = p["veiculos"]
     for off in range(-p["dias"], DIAS_SIMULADOS + 1):
         dia = hoje + timedelta(days=off)
         base_ts = inicio_dia(dia)
@@ -118,7 +121,7 @@ def gerar(agora: datetime, seed: int, perfil: str = "demo") -> dict:
         rng = random.Random(f"{seed}-{perfil}-{off}")
         rnd, logn = rng.random, rng.lognormvariate
         seq_dia = 0
-        for ti, t in enumerate(trechos):
+        for t in trechos:
             for tipo in p["tipos"]:
                 ft = FATOR_TIPO[tipo]
                 for h in range(24):
@@ -137,7 +140,7 @@ def gerar(agora: datetime, seed: int, perfil: str = "demo") -> dict:
                                                  seconds=int(rnd() * 60))
                         doc = {"origem": t["origem"], "destino": t["destino"],
                                "tipoVeiculo": tipo,
-                               "veiculoId": f"VEI-{tipo}-{ti % 5 + 1}",
+                               "veiculoId": f"VEI-{tipo}-{(seq_dia + off * 7) % n_veic + 1}",
                                "viagemId": f"VIA-{dia:%Y%m%d}-{seq_dia:06d}", "seq": 1,
                                "observadoEm": ts, "distanciaKm": round(km, 2),
                                "tempoMin": round(tempo, 2)}
