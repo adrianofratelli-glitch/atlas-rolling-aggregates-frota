@@ -2,8 +2,10 @@ import { useEffect, useState } from 'react'
 import { get } from '../api.js'
 import { dataLocal, diaSemana, horaLocal, num } from '../fmt.js'
 import GavetaQuery from '../comp/GavetaQuery.jsx'
+import MapaFluxo from '../comp/MapaFluxo.jsx'
 
 const DIA_S = 86400
+const ATIVO = ['rastreio', 'cadastro', 'raw', 'e-rastreio-raw', 'e-cadastro-raw']
 
 // O porquê de cada índice da raw, em uma frase.
 function porque(i) {
@@ -20,20 +22,22 @@ function tipo(p) {
   return t + (p.exclusiveMinimum ? ' > 0' : p.minimum != null && t !== 'string' ? ` ≥ ${p.minimum}` : '')
 }
 
-export default function DadoBruto({ ocupado, opcoes }) {
+export default function DadoBruto({ ocupado, opcoes, estado }) {
   const [d, setD] = useState(null)
   const [erro, setErro] = useState('')
   useEffect(() => {
     if (ocupado) return
     get('/api/raw').then((r) => { setD(r); setErro('') }).catch((e) => setErro(e.message))
   }, [ocupado])
-  if (erro) return <p className="aviso erro" role="alert">{erro}</p>
-  if (!d) return <p className="nota">Carregando a amostra…</p>
+  const mapa = <MapaFluxo ativo={ATIVO} horario={estado?.trigger?.horarioLocal} />
+  if (erro) return <>{mapa}<p className="aviso erro" role="alert">{erro}</p></>
+  if (!d) return <>{mapa}<p className="nota">Carregando a amostra…</p></>
   const js = d.schema.validator?.$jsonSchema
   const req = new Set(js?.required || [])
   const t = opcoes?.trechos.find((x) => x.origem === d.filtro.origem && x.destino === d.filtro.destino)
   return (
     <>
+      {mapa}
       <div className="duas">
         <section className="cartao">
           <h3>Observações de viagem <small><code>trecho_observacoes</code></small></h3>
@@ -76,7 +80,10 @@ export default function DadoBruto({ ocupado, opcoes }) {
           </ul>
         </section>
       </div>
-      <GavetaQuery query={d.query} />
+      <GavetaQuery query={d.query} extra={d.ingestao && {
+        titulo: 'Como a ingestão grava', sub: 'exemplo', query: d.ingestao,
+        frase: 'Em produção quem grava é o rastreio da frota; o índice único viagemId+seq impede duplicar uma viagem.',
+      }} />
     </>
   )
 }

@@ -219,6 +219,33 @@ progress { width: 100%; height: 6px; accent-color: var(--accent); }
 .dialogo p { color: var(--text-sec); }
 .dialogo-acoes { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
 
+/* mapa do fluxo (topo de cada passo) */
+.mapa-fluxo { min-width: 0; padding: 10px 12px; border-radius: 14px; background: var(--bg-secondary); border: 1px solid var(--border-subtle); }
+.mapa-fluxo svg { display: block; width: 100%; height: auto; overflow: visible; }
+.mf-no rect { fill: var(--bg-card); stroke: var(--border-subtle); stroke-width: 1.2; }
+.mf-no, .mf-seta { transition: opacity .2s var(--ease); }
+.mf-no.off, .mf-seta.off { opacity: .36; }
+.mf-no.meio, .mf-seta.meio { opacity: .62; }
+.mf-no.meio rect { stroke-dasharray: 4 3; stroke: var(--text-muted); }
+.mf-no.on rect { stroke: var(--accent); stroke-width: 1.8; fill: rgba(0, 237, 100, .07); }
+.mf-titulo { fill: var(--text-pri); font-weight: 600; }
+.mf-mono { font-family: var(--mono); }
+.mf-titulo.mf-mono { font-weight: 500; }
+.mf-no.on .mf-titulo.mf-mono { fill: var(--accent); }
+.mf-sub { fill: var(--text-muted); }
+.mf-hora.destaque { fill: var(--accent); font-weight: 700; }
+.mf-marca circle { fill: var(--bg-secondary); stroke: var(--text-muted); stroke-width: 1.4; }
+.mf-no.on .mf-marca circle { fill: var(--accent); stroke: var(--accent); }
+.mf-marca path { fill: none; stroke: #001e2b; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.mf-seta path { stroke: var(--text-muted); stroke-width: 1.4; }
+.mf-seta.on path { stroke: var(--accent); stroke-width: 2; }
+.mf-ponta { fill: var(--text-muted); }
+.mf-ponta.on { fill: var(--accent); }
+.mf-rotulo { fill: var(--text-sec); }
+.mf-seta.on .mf-rotulo { fill: var(--accent); }
+.mf-num { fill: var(--pov-lime); font-family: var(--mono); font-weight: 600; }
+.mf-particula { fill: var(--pov-lime); }
+
 /* ── responsivo ────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .duas { grid-template-columns: minmax(0, 1fr); }
@@ -248,5 +275,6 @@ progress { width: 100%; height: 6px; accent-color: var(--accent); }
   .previa li { grid-template-columns: minmax(0, 1fr) auto; }
   .previa li:not(.chaves) > span:nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
   .navpassos button { flex: 1 1 100%; }
+  .mapa-fluxo { padding: 0; background: none; border: 0; border-radius: 0; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

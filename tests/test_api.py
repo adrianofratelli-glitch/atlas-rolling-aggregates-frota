@@ -98,6 +98,12 @@ def test_raw_schema_do_banco(cli):
     assert r["schema"]["validator"] == VALIDATORS["trecho_observacoes"]
     assert any(i["nome"] == "viagemId_1_seq_1" for i in r["schema"]["indices"])
     assert r["query"]["operacao"] == "find" and ".find(" in r["query"]["mongosh"]
+    ing = r["ingestao"]
+    assert ing["le"] == ["ingestao_simulada"] and ing["grava"] == ["trecho_observacoes"]
+    assert ing["operacao"] == "aggregate"
+    for trecho in ("$match", "$project", "_id: 0", "$merge", "trecho_observacoes", "viagemId", "seq",
+                   "replace", "insert"):
+        assert trecho in ing["mongosh"], trecho
 
 
 def test_job_proximo_runs(cli):

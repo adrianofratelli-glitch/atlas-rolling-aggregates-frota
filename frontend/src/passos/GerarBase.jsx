@@ -2,17 +2,20 @@ import { useState } from 'react'
 import { post } from '../api.js'
 import { dataHora, int, num } from '../fmt.js'
 import GavetaQuery from '../comp/GavetaQuery.jsx'
+import MapaFluxo from '../comp/MapaFluxo.jsx'
 
 const nomeEstagio = (e) => Object.keys(e)[0]
+const ATIVO = ['raw', 'job', 'base', 'e-raw-job', 'e-job-base']
 
 export default function GerarBase({ estado, onMudou }) {
   const [run, setRun] = useState(null)
   const [rodando, setRodando] = useState(false)
   const [erro, setErro] = useState('')
+  const [disparos, setDisparos] = useState(0)
   const ultimo = estado.ultimoJob
 
   const rodar = async () => {
-    setRodando(true); setErro('')
+    setRodando(true); setErro(''); setDisparos((n) => n + 1)
     try {
       setRun(await post('/api/job'))
       onMudou()
@@ -25,6 +28,8 @@ export default function GerarBase({ estado, onMudou }) {
 
   return (
     <>
+      <MapaFluxo ativo={ATIVO} horario={estado.trigger.horarioLocal} animar={disparos}
+        numeros={run && !rodando ? { raw: run.lidos, base: run.gravados } : null} />
       <div className="acao">
         <button type="button" className="primario" onClick={rodar} disabled={rodando} aria-busy={rodando}>
           {rodando ? 'Rodando o job… (alguns segundos)' : 'Rodar job agora'}

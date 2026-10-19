@@ -4,6 +4,13 @@ import { somaDias } from '../fmt.js'
 import FiltroCenario, { useConsultaAuto } from '../comp/FiltroCenario.jsx'
 import GavetaQuery from '../comp/GavetaQuery.jsx'
 import Resultado from '../comp/Resultado.jsx'
+import MapaFluxo from '../comp/MapaFluxo.jsx'
+
+const RAMO_BASE = ['base', 'eta', 'e-base-eta']
+const RAMO_RAW = ['raw', 'salvas', 'eta', 'e-raw-salvas', 'e-salvas-eta']
+// ramo aceso conforme o selo da resposta; antes da primeira, os dois em opacidade média
+const ramos = (selo) => (selo === 'job_diario' ? { ativo: RAMO_BASE }
+  : selo === 'sob_demanda' ? { ativo: RAMO_RAW } : { parcial: [...RAMO_BASE, ...RAMO_RAW] })
 
 // O detalhe da API já descreve o nível usado ("poucas amostras: ampliado para …",
 // "sem histórico suficiente…"); aqui entra só a etiqueta, para não repetir o texto.
@@ -44,6 +51,7 @@ export default function Consultar({ opcoes, filtro, setFiltro, estado, ocupado }
 
   return (
     <>
+      <MapaFluxo {...ramos(resposta?.selo)} horario={estado.trigger.horarioLocal} />
       <FiltroCenario valor={filtro} onChange={setFiltro} opcoes={opcoes}>
         <fieldset className="sem-borda">
           <legend>Período</legend>

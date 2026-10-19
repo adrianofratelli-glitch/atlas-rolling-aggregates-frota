@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { get } from '../api.js'
 import { dataHora, dataIso, int, num } from '../fmt.js'
+import MapaFluxo from '../comp/MapaFluxo.jsx'
 
+const ATIVO = ['job']
 const ORIGEM = { trigger: 'trigger', botao: 'botão', cli: 'make job', reset: 'reset' }
 
 export default function QuandoAtualiza({ estado, ocupado, ir }) {
@@ -17,6 +19,7 @@ export default function QuandoAtualiza({ estado, ocupado, ir }) {
   const t = estado.trigger
   return (
     <>
+      <MapaFluxo ativo={ATIVO} horario={t.horarioLocal} destaqueHorario />
       <div className="duas">
         <section className="cartao">
           <h3>Agendamento</h3>

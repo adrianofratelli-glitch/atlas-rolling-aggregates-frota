@@ -1,4 +1,7 @@
 import { dataIso, dataLocal, somaDias } from '../fmt.js'
+import MapaFluxo from '../comp/MapaFluxo.jsx'
+
+const ATIVO = ['raw', 'job', 'e-raw-job']
 
 // A regra em linguagem simples, com as datas concretas da janela de hoje.
 export default function Regra({ estado }) {
@@ -6,6 +9,7 @@ export default function Regra({ estado }) {
   const ultimoDia = somaDias(estado.dataRef, -1)
   return (
     <>
+      <MapaFluxo ativo={ATIVO} horario={estado.trigger.horarioLocal} />
       <ol className="regra">
         <li><b>Janela de {j.dias} dias</b><span>do dia {dataLocal(j.inicio)} até o dia {dataIso(ultimoDia)}. Hoje ({dataIso(estado.dataRef)}) fica de fora: o dia ainda não terminou.</span></li>
         <li><b>Chave da média</b><span>trecho × tipo de veículo × dia da semana × hora</span></li>

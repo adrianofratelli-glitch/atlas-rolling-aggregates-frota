@@ -37,7 +37,7 @@ async def _ciclo(_app):
     yield
 
 
-app = FastAPI(lifespan=_ciclo, title="Agregados em janela móvel — fallback de ETA", version="2.1.0")
+app = FastAPI(lifespan=_ciclo, title="Agregados em janela móvel — fallback de ETA", version="2.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5410",
                                                   "http://localhost:5410"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -242,8 +242,10 @@ def raw(origem: str | None = None, destino: str | None = None,
     query = {"le": [RAW], "grava": [], "operacao": "find", "operadores": [],
              "mongosh": f"db.{RAW}.find({para_mongosh(filtro)}).sort({{ observadoEm: -1 }})"
                         f".limit(3000)"}
+    # exemplo de como a ingestão grava (o mesmo pipeline de frota/pipelines/ingestao.py)
     return J({"filtro": filtro, "amostra": _amostra(docs),
-              "schema": {"validator": validator, "indices": indices}, "query": query})
+              "schema": {"validator": validator, "indices": indices}, "query": query,
+              "ingestao": ingestao.bloco(agora_utc())})
 
 
 # ---- job, cenário, prévia ---------------------------------------------------
