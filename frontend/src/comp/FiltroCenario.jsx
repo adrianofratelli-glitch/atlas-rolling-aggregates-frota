@@ -4,14 +4,26 @@ import { DIAS_CURTOS, h2 } from '../fmt.js'
 
 const ROTULO_ATALHO = { manha: 'Manhã', tarde: 'Tarde', noite: 'Noite' }
 
-export const chaveTrecho = (t) => `${t.origem}|${t.destino}`
-
-export function filtroInicial(opcoes, { esparso = false } = {}) {
-  const t = opcoes.trechos.find((x) => x.esparso === esparso) || opcoes.trechos[0]
+export function filtroInicial(opcoes) {
+  const t = opcoes.trechos.find((x) => !x.esparso) || opcoes.trechos[0]
   const tarde = opcoes.atalhos.tarde || { inicio: 12, fim: 18 }
-  return { origem: t?.origem || '', destino: t?.destino || '', tipoVeiculo: 'CARRETA',
+  return { origem: t?.origem || '', destino: t?.destino || '', tipoVeiculo: 'CARRETA', veiculoId: '',
     dias: [5], horaInicio: tarde.inicio, horaFim: tarde.fim }
 }
+
+// O filtro guardado no App ainda vale com as opções atuais (depois de um reset, por exemplo)?
+export function filtroValido(f, opcoes) {
+  if (!f || !opcoes.trechos.some((t) => t.origem === f.origem && t.destino === f.destino)) return false
+  return !f.veiculoId || (opcoes.veiculos?.[f.tipoVeiculo] || []).includes(f.veiculoId)
+}
+
+// ao trocar a origem, o destino vai para o primeiro válido (com dados regulares, se houver)
+const primeiroDestino = (trechos, origem) => {
+  const ds = trechos.filter((t) => t.origem === origem)
+  return (ds.find((t) => !t.esparso) || ds[0])?.destino || ''
+}
+// origens sem repetir, na ordem dos trechos (a API já ordena por origem e destino)
+const origens = (trechos) => [...new Map(trechos.map((t) => [t.origem, t.nomeOrigem])).entries()]
 
 // Consulta automática com debounce; só a última resposta pedida é mostrada.
 export function useConsultaAuto(corpo, ativo = true, espera = 300) {
@@ -35,6 +47,7 @@ export function useConsultaAuto(corpo, ativo = true, espera = 300) {
 
 export default function FiltroCenario({ valor, onChange, opcoes, children }) {
   const set = (campos) => onChange({ ...valor, ...campos })
+  const destinos = opcoes.trechos.filter((t) => t.origem === valor.origem)
   const alternarDia = (d) => {
     const tem = valor.dias.includes(d)
     if (tem && valor.dias.length === 1) return // ao menos um dia
@@ -43,19 +56,28 @@ export default function FiltroCenario({ valor, onChange, opcoes, children }) {
   return (
     <form className="filtro" onSubmit={(e) => e.preventDefault()} aria-label="Cenário">
       <div className="filtro-linha">
-        <label className="campo largo">Trecho
-          <select value={`${valor.origem}|${valor.destino}`}
-            onChange={(e) => { const [origem, destino] = e.target.value.split('|'); set({ origem, destino }) }}>
-            {opcoes.trechos.map((t) => (
-              <option key={chaveTrecho(t)} value={chaveTrecho(t)}>
-                {t.nomeOrigem} → {t.nomeDestino}{t.esparso ? ' · poucos dados' : ''}
-              </option>
+        <label className="campo">Origem
+          <select name="origem" value={valor.origem}
+            onChange={(e) => set({ origem: e.target.value, destino: primeiroDestino(opcoes.trechos, e.target.value) })}>
+            {origens(opcoes.trechos).map(([id, nome]) => <option key={id} value={id}>{nome}</option>)}
+          </select>
+        </label>
+        <label className="campo">Destino
+          <select name="destino" value={valor.destino} onChange={(e) => set({ destino: e.target.value })}>
+            {destinos.map((t) => (
+              <option key={t.destino} value={t.destino}>{t.nomeDestino}{t.esparso ? ' · poucos dados' : ''}</option>
             ))}
           </select>
         </label>
-        <label className="campo">Veículo
-          <select value={valor.tipoVeiculo} onChange={(e) => set({ tipoVeiculo: e.target.value })}>
+        <label className="campo">Tipo de veículo
+          <select name="tipoVeiculo" value={valor.tipoVeiculo} onChange={(e) => set({ tipoVeiculo: e.target.value, veiculoId: '' })}>
             {opcoes.tipos.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </label>
+        <label className="campo">Veículo
+          <select name="veiculoId" value={valor.veiculoId || ''} onChange={(e) => set({ veiculoId: e.target.value })}>
+            <option value="">todos os veículos do tipo</option>
+            {(opcoes.veiculos?.[valor.tipoVeiculo] || []).map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </label>
       </div>

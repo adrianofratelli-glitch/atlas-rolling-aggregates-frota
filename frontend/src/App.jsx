@@ -1,24 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get, post } from './api.js'
 import { dataHora, ddmm } from './fmt.js'
-import { filtroInicial } from './comp/FiltroCenario.jsx'
+import { filtroInicial, filtroValido } from './comp/FiltroCenario.jsx'
 import ResetDemo, { Progresso } from './comp/ResetDemo.jsx'
 import DadoBruto from './passos/DadoBruto.jsx'
 import Regra from './passos/Regra.jsx'
 import GerarBase from './passos/GerarBase.jsx'
-import Cenarios from './passos/Cenarios.jsx'
-import ForaDaBase from './passos/ForaDaBase.jsx'
+import Consultar from './passos/Consultar.jsx'
 import QuandoAtualiza from './passos/QuandoAtualiza.jsx'
-import PoucasAmostras from './passos/PoucasAmostras.jsx'
 
 const PASSOS = [
   { titulo: 'Dado bruto e schema', lead: 'Cada viagem gera observações: quando, quanto andou e quanto demorou.', C: DadoBruto },
   { titulo: 'A regra', lead: 'A média sai dos últimos 180 dias, por trecho, veículo, dia da semana e hora.', C: Regra },
   { titulo: 'Gerar a base', lead: 'Um aggregate lê a raw e grava as médias prontas numa collection.', C: GerarBase },
-  { titulo: 'Consultar cenários', lead: 'Qualquer combinação de dias e horas soma poucos documentos já prontos.', C: Cenarios },
-  { titulo: 'Fora da base', lead: 'Outro período? Calcula na raw na hora e, se quiser, guarda o resultado.', C: ForaDaBase },
+  { titulo: 'Consultar', lead: 'Qualquer trecho, veículo, dia, hora e período, numa consulta só.', C: Consultar },
   { titulo: 'Quando atualiza', lead: 'Um trigger agendado roda o job uma vez por dia.', C: QuandoAtualiza },
-  { titulo: 'Poucas amostras', lead: 'Trecho com pouco histórico: a consulta amplia até ter amostras suficientes.', C: PoucasAmostras },
 ]
 const ALVO = { atlas: 'MongoDB Atlas', local: 'Docker local' }
 
@@ -55,7 +51,7 @@ export default function App() {
     try {
       const [e, o] = await Promise.all([get('/api/estado'), get('/api/opcoes')])
       setEstado(e); setOpcoes(o); setErro('')
-      setFiltro((f) => (f && o.trechos.some((t) => t.origem === f.origem && t.destino === f.destino) ? f : filtroInicial(o)))
+      setFiltro((f) => (filtroValido(f, o) ? f : filtroInicial(o)))
       if (e.resetando) setReset((r) => ({ ...r, resetando: true }))
     } catch (e) {
       setErro(e.message)
@@ -75,7 +71,8 @@ export default function App() {
     return () => window.removeEventListener('hashchange', aoMudar)
   }, [])
   useEffect(() => {
-    if (passoDaUrl() !== passo) window.location.hash = `passo=${passo}`
+    // compara o texto da URL: #passo=7 (não existe mais) vira #passo=1
+    if (new URLSearchParams(window.location.hash.slice(1)).get('passo') !== String(passo)) window.location.hash = `passo=${passo}`
     setVisitados((v) => (v.has(passo) ? v : new Set(v).add(passo)))
     document.querySelector('.trilho [aria-current="step"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
     // só move o foco quando o passo muda de fato (o StrictMode reexecuta o efeito no load)

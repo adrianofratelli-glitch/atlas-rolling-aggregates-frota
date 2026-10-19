@@ -49,11 +49,13 @@ export default function GerarBase({ estado, onMudou }) {
             {run.pipeline.map((e, i) => {
               const op = nomeEstagio(e.estagio)
               const merge = op === '$merge'
+              // no $merge, só a frase curta e o rótulo; o comentário completo fica na gaveta
               return (
                 <li key={i} className={merge ? 'destaque' : ''}>
                   <code className="op">{op}</code>
-                  <span>{e.comentario}</span>
-                  {merge && <strong className="mv">É a “materialized view”: a base fica pronta para leitura.</strong>}
+                  {merge
+                    ? <span>Grava o resultado numa collection persistente. <strong className="mv">materialized view</strong></span>
+                    : <span>{e.comentario}</span>}
                 </li>
               )
             })}
