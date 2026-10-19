@@ -7,6 +7,7 @@ from frota.operadores import EXPLICACOES, bloco_query, operadores_usados
 from frota.pipelines import comentados, estagios
 from frota.cenario import Filtro
 from frota.pipelines import cenario as cen_pipe
+from frota.pipelines import ingestao as ing_pipe
 from frota.pipelines import job as job_pipe
 
 INI = datetime(2026, 4, 22, 3, tzinfo=timezone.utc)
@@ -35,7 +36,7 @@ def _cenarios():
 
 
 def test_toda_op_tem_explicacao():
-    for p in [_job(), *_cenarios()]:
+    for p in [_job(), *_cenarios(), ing_pipe.pipeline(FIM)]:
         for op in operadores_usados(estagios(p)):
             assert EXPLICACOES.get(op), op
 
