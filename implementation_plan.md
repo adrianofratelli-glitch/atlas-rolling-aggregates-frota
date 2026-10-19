@@ -1,6 +1,6 @@
 # Plano de implementação
 
-Estado em 2026-10-19. Versão 2.1.0 na branch `feat/v2-simplificacao` (ainda não publicada).
+Estado em 2026-10-19. Versão 2.2.0 na branch `feat/v2-simplificacao` (ainda não publicada).
 A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0.0/v1.0.1.
 
 ## Concluído (v2.0.0)
@@ -19,10 +19,11 @@ A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0
 9. API v2 e UI de uma página com roteiro de 5 passos (Dark Stage v4, 360/768/1440 px).
    Na v2.1: passo único "Consultar" (base pronta ou raw decidido pela API), veículo
    específico sempre na raw, 15 veículos por tipo no gerador, "guardar" marcado por padrão.
+   Na v2.2: mapa do fluxo animado no topo de cada passo e "Como a ingestão grava" no passo 1.
 10. Limpeza dos bancos antigos (Atlas e local) e alvos do Makefile.
 11. Docs públicas, prints do Atlas real, portfólio e grafo.
 
-105 testes no Atlas (9.0.4) e no MongoDB 8.0.34 local.
+107 testes no MongoDB 8.0.34 local (v2.2; `tests/test_api.py` também no Atlas). v2.1: 105 testes no Atlas (9.0.4) e no MongoDB 8.0.34 local.
 
 ## Não feito / próximos passos
 

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.2.0 (2026-10-19)
+
+- **Flow map** at the top of every step (`frontend/src/comp/MapaFluxo.jsx`, inline SVG, no
+  new dependency): fleet tracking → `trecho_observacoes` (with the `pontos · trechos`
+  registry dashed in) → daily job → `$merge` → `trecho_media_dow_hora` → fallback ETA, plus
+  the "outside the base" branch through `consultas_salvas`. Each step lights its part; lit
+  nodes get a green border and a ✓ circle (shape, not only colour). Three drawings chosen by
+  container width (horizontal, medium, vertical), no horizontal overflow at 360/768/1440 px;
+  `role="img"` with a description of the flow and of what is lit.
+- Step 3: "Rodar job agora" plays a single 1.4 s animation of dots going from the raw to the
+  ready base and then shows the run's real numbers on the nodes (read → written). With
+  `prefers-reduced-motion`, only the numbers change.
+- Step 4: the map lights the base branch for "Job diário" and the raw → saved branch for
+  "Sob demanda" (both half-lit before the first answer).
+- Step 1 drawer: new section "Como a ingestão grava (exemplo)" with the ingestion pipeline
+  (`$match` → `$project` → `$merge` on `viagemId, seq`). `GET /api/raw` returns it as
+  `ingestao` (same `query` block shape).
+
 ## 2.1.0 (2026-10-19)
 
 - **One "Consultar" step** replaces "Query scenarios", "Outside the base" and "Few samples":

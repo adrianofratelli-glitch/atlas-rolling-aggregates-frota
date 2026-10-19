@@ -6,9 +6,13 @@ job do dia; leva menos de 2 minutos no Atlas. Confira no topo o chip **MongoDB A
 no trilho "base gerada em …" com a data de hoje. Suba com `./start.sh` (ou `make api` +
 `make ui`) e abra http://127.0.0.1:5410.
 
+No topo de cada passo, o **mapa do fluxo** acende o trecho daquele passo: use-o para dizer
+onde se está ("agora estamos aqui: a raw entra no job"). No passo 3 ele anima a raw indo
+para a base e mostra lidas → gravadas; no passo 4 acende o ramo do selo.
+
 | min | Passo | O que fazer | O que dizer |
 |---|---|---|---|
-| 0–1 | **1 · Dado bruto e schema** | Mostrar a amostra (dias e horas variados) e o schema ao lado. Abrir a gaveta. | Cada trecho percorrido vira uma observação: quando partiu, quanto andou, quanto demorou. Data é BSON Date UTC; o `$jsonSchema` recusa string. Os índices e o porquê de cada um vêm do banco. |
+| 0–1 | **1 · Dado bruto e schema** | Mostrar a amostra (dias e horas variados) e o schema ao lado. Abrir a gaveta (inclui "Como a ingestão grava"). | Cada trecho percorrido vira uma observação: quando partiu, quanto andou, quanto demorou. Data é BSON Date UTC; o `$jsonSchema` recusa string. Os índices e o porquê de cada um vêm do banco. Em produção quem grava é o rastreio da frota; o `$merge` pelo índice único viagemId+seq não duplica uma viagem. |
 | 1–2 | **2 · A regra** | Ler as datas da janela. | Média dos últimos 180 dias, D-1 a D-180: hoje fica fora porque o dia não terminou. A chave é trecho × veículo × dia da semana × hora, no horário de São Paulo. Manhã/tarde/noite são só atalhos de faixa. |
 | 2–4 | **3 · Gerar a base** | "Rodar job agora". Percorrer os estágios; parar no `$merge`. Abrir a gaveta. | Um aggregate lê a raw, calcula `$isoDayOfWeek` e `$hour` no fuso, agrupa guardando somas e contagem e grava com `$merge` replace: é a "materialized view". Rodar de novo dá o mesmo resultado. Em produção quem roda é o trigger (passo 5). |
 | 4–7 | **4 · Consultar** | Janela padrão: sexta, Tarde; depois seg–sex, Manhã; trocar o tipo. Abrir a gaveta e "Como essa base foi gerada". Escolher um **veículo** (ex.: `VEI-CARRETA-7`), Calcular duas vezes. Trocar para "Datas específicas" (últimas 4 semanas), Calcular. Por fim, um destino "poucos dados" com todos os veículos. | Uma tela só; quem decide de onde vem a média é a API. Janela padrão do tipo inteiro: soma poucos documentos prontos (sexta à tarde = 6); é isto que a aplicação lê quando o ETA online cai. A base é por tipo, não por veículo: com um veículo, ou com outro período, o mesmo cálculo roda na raw na hora e, como "guardar o resultado" vem marcado, o `$merge` grava em `consultas_salvas`; a segunda vez vem "lido do salvo". Janela padrão + veículo vale até o próximo job; datas específicas, pela validade escolhida. O TTL apaga sozinho. No trecho com poucos dados a base amplia e diz como (regra para validar com vocês). |
