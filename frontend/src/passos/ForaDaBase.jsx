@@ -32,20 +32,22 @@ export default function ForaDaBase({ opcoes, filtro, setFiltro, estado }) {
   return (
     <>
       <FiltroCenario valor={filtro} onChange={setFiltro} opcoes={opcoes}>
-        <fieldset className="filtro-linha sem-borda periodo">
+        <fieldset className="sem-borda">
           <legend>Período</legend>
+          <div className="filtro-linha">
           <div className="seg" role="group" aria-label="Tipo de período">
             <button type="button" aria-pressed={p.tipo === 'datas'} onClick={() => set({ tipo: 'datas' })}>Datas específicas</button>
             <button type="button" aria-pressed={p.tipo === 'ultimos'} onClick={() => set({ tipo: 'ultimos' })}>Últimos N dias</button>
           </div>
           {p.tipo === 'datas' ? (
-            <div className="filtro-linha">
+            <>
               <label className="campo curto">De<input type="date" value={p.de} max={p.ate} onChange={(e) => set({ de: e.target.value })} /></label>
               <label className="campo curto">Até<input type="date" value={p.ate} min={p.de} max={hoje} onChange={(e) => set({ ate: e.target.value })} /></label>
-            </div>
+            </>
           ) : (
             <label className="campo curto">Dias<input type="number" min="1" max="200" value={p.dias} onChange={(e) => set({ dias: e.target.value })} /></label>
           )}
+          </div>
         </fieldset>
         <div className="filtro-linha persistir">
           <label className="check"><input type="checkbox" checked={p.persistir} onChange={(e) => set({ persistir: e.target.checked })} /> persistir este resultado</label>

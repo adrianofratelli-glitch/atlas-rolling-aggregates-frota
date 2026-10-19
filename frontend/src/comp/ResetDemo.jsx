@@ -6,10 +6,11 @@ const ETAPAS = {
 }
 export const nomeEtapa = (e) => ETAPAS[e] || e || 'preparando'
 
-export function Progresso({ reset }) {
+// Só uma região viva (a do trilho); a cópia no corpo do passo é visual (`anunciar={false}`).
+export function Progresso({ reset, anunciar = true }) {
   const pct = Math.round((reset.pct || 0) * 100)
   return (
-    <div className="progresso" role="status" aria-live="polite">
+    <div className="progresso" {...(anunciar ? { role: 'status', 'aria-live': 'polite' } : {})}>
       <span>Recriando a demo · {nomeEtapa(reset.etapa)} · {pct}%</span>
       <progress max="100" value={pct} aria-label="Progresso do reset">{pct}%</progress>
     </div>

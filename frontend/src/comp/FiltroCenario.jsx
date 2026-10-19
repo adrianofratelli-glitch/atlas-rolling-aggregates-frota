@@ -59,7 +59,7 @@ export default function FiltroCenario({ valor, onChange, opcoes, children }) {
           </select>
         </label>
       </div>
-      <fieldset className="filtro-linha sem-borda">
+      <fieldset className="sem-borda">
         <legend>Dias da semana</legend>
         <div className="dias" role="group" aria-label="Dias da semana">
           {[1, 2, 3, 4, 5, 6, 7].map((d) => (

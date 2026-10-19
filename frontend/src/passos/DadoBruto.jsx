@@ -20,7 +20,7 @@ function tipo(p) {
   return t + (p.exclusiveMinimum ? ' > 0' : p.minimum != null && t !== 'string' ? ` ≥ ${p.minimum}` : '')
 }
 
-export default function DadoBruto({ ocupado }) {
+export default function DadoBruto({ ocupado, opcoes }) {
   const [d, setD] = useState(null)
   const [erro, setErro] = useState('')
   useEffect(() => {
@@ -31,12 +31,14 @@ export default function DadoBruto({ ocupado }) {
   if (!d) return <p className="nota">Carregando a amostra…</p>
   const js = d.schema.validator?.$jsonSchema
   const req = new Set(js?.required || [])
+  const t = opcoes?.trechos.find((x) => x.origem === d.filtro.origem && x.destino === d.filtro.destino)
   return (
     <>
       <div className="duas">
         <section className="cartao">
           <h3>Observações de viagem <small><code>trecho_observacoes</code></small></h3>
-          <p className="nota">{d.filtro.origem} → {d.filtro.destino} · {d.filtro.tipoVeiculo} · amostra de {d.amostra.length} observações</p>
+          <p className="trecho-nome">{t ? `${t.nomeOrigem} → ${t.nomeDestino}` : `${d.filtro.origem} → ${d.filtro.destino}`} · {d.filtro.tipoVeiculo}
+            <small>{d.filtro.origem} → {d.filtro.destino} · amostra de {d.amostra.length} observações</small></p>
           <div className="rolagem" tabIndex={0} aria-label="Amostra da raw">
             <table>
               <thead><tr><th>data local</th><th>dia</th><th>hora</th><th className="dir">km</th><th className="dir">min</th></tr></thead>

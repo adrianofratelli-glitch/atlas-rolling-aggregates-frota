@@ -41,7 +41,10 @@ function Bloco({ query }) {
         <Chips rotulo="Grava em" itens={query.grava} />
       </div>
       <div className="codigo">
-        <button type="button" className="copiar" onClick={copiar} aria-live="polite">{copiado || 'copiar'}</button>
+        <div className="codigo-cab">
+          <span className="nota">mongosh · {query.operacao}</span>
+          <button type="button" className="copiar" onClick={copiar} aria-live="polite">{copiado || 'copiar'}</button>
+        </div>
         <pre tabIndex={0} aria-label={`Comando ${query.operacao} para o mongosh`}>
           <code dangerouslySetInnerHTML={{ __html: destacar(query.mongosh, query.operadores) }} />
         </pre>

@@ -38,7 +38,7 @@ export default function App() {
   const [reset, setReset] = useState({ resetando: false })
   const titulo = useRef(null)
   const abrirReset = useRef(null)
-  const primeira = useRef(true)
+  const passoAnterior = useRef(passoDaUrl())
 
   const carregar = useCallback(async () => {
     try {
@@ -55,7 +55,11 @@ export default function App() {
 
   // passo atual na URL (#passo=4); voltar/avançar do navegador também funciona
   useEffect(() => {
-    const aoMudar = () => setPasso(passoDaUrl())
+    // o link "Pular para o conteúdo" troca o hash para #conteudo: não pode mandar ao passo 1
+    const aoMudar = () => {
+      if (new URLSearchParams(window.location.hash.slice(1)).has('passo')) setPasso(passoDaUrl())
+      else window.history.replaceState(null, '', `#passo=${passoAnterior.current}`)
+    }
     window.addEventListener('hashchange', aoMudar)
     return () => window.removeEventListener('hashchange', aoMudar)
   }, [])
@@ -63,7 +67,9 @@ export default function App() {
     if (passoDaUrl() !== passo) window.location.hash = `passo=${passo}`
     setVisitados((v) => (v.has(passo) ? v : new Set(v).add(passo)))
     document.querySelector('.trilho [aria-current="step"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    if (primeira.current) { primeira.current = false; return }
+    // só move o foco quando o passo muda de fato (o StrictMode reexecuta o efeito no load)
+    if (passoAnterior.current === passo) return
+    passoAnterior.current = passo
     window.scrollTo({ top: 0 })
     titulo.current?.focus({ preventScroll: true })
   }, [passo])
@@ -81,17 +87,24 @@ export default function App() {
       } else setReset({ resetando: false, erro: e.message })
     }
   }
+  // setTimeout encadeado: com ida e volta lenta (Atlas) as chamadas nunca se sobrepõem
   useEffect(() => {
     if (!reset.resetando) return undefined
-    const id = setInterval(async () => {
-      const s = await get('/api/reset/status').catch(() => null)
-      atualizarEstado()
-      if (!s) return
-      setReset((r) => ({ ...r, ...s, aviso: s.resetando ? r.aviso : undefined }))
-      if (!s.resetando) { await carregar(); setRev((n) => n + 1) }
-    }, 1000)
-    return () => clearInterval(id)
-  }, [reset.resetando, carregar, atualizarEstado])
+    let vivo = true
+    let id
+    const ciclo = async () => {
+      const [s] = await Promise.all([
+        get('/api/reset/status').catch(() => null),
+        get('/api/estado').then(setEstado).catch(() => {}),
+      ])
+      if (!vivo) return
+      if (s) setReset((r) => ({ ...r, ...s, aviso: s.resetando ? r.aviso : undefined }))
+      if (s && !s.resetando) { await carregar(); setRev((n) => n + 1); return }
+      id = setTimeout(ciclo, 1000)
+    }
+    id = setTimeout(ciclo, 1000)
+    return () => { vivo = false; clearTimeout(id) }
+  }, [reset.resetando, carregar])
 
   const ir = (n) => setPasso(Math.min(PASSOS.length, Math.max(1, n)))
   const P = PASSOS[passo - 1]
@@ -110,7 +123,7 @@ export default function App() {
   } else if (!pronto) {
     corpo = <p className="nota" role="status">Conectando ao backend…</p>
   } else if (reset.resetando) {
-    corpo = <div className="cartao"><Progresso reset={reset} /><p className="nota">Os passos voltam quando terminar.</p></div>
+    corpo = <div className="cartao"><Progresso reset={reset} anunciar={false} /><p className="nota">Os passos voltam quando terminar.</p></div>
   } else if (baseVazia) {
     corpo = (
       <div className="aviso" role="status">
@@ -125,7 +138,7 @@ export default function App() {
           <p className="aviso">As médias ainda não foram geradas: rode o passo 3 ou <b>Resetar demo</b>.</p>
         )}
         <P.C key={rev} estado={estado} opcoes={opcoes} filtro={filtro} setFiltro={setFiltro}
-          ocupado={reset.resetando} onMudou={atualizarEstado} />
+          ocupado={reset.resetando} onMudou={atualizarEstado} ir={ir} />
       </>
     )
   }
@@ -160,7 +173,7 @@ export default function App() {
             })}
           </ol>
           <div className="trilho-pe">
-            {estado?.simuladoAte && <span className="nota">dados simulados até {ddmm(estado.simuladoAte)}</span>}
+            {estado?.simuladoAte && <span className="nota">ingestão simulada programada até {ddmm(estado.simuladoAte)}</span>}
             <ResetDemo reset={reset} onConfirmar={iniciarReset} abrirRef={abrirReset} />
           </div>
         </nav>
@@ -178,7 +191,7 @@ export default function App() {
               ? <button type="button" onClick={() => ir(passo + 1)}>Próximo: {proximo.titulo} →</button>
               : <button type="button" onClick={() => ir(1)}>Voltar ao início</button>}
           </nav>
-          <footer className="rodape">Dados 100% sintéticos. Demonstra o padrão; não é proposta de schema produtivo.</footer>
+          <footer className="rodape">Dados 100% sintéticos. Modelo de referência: adapte ao cadastro mestre real.</footer>
         </main>
       </div>
     </div>

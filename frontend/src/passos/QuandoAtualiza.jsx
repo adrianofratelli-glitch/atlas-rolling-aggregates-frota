@@ -4,7 +4,7 @@ import { dataHora, dataIso, int, num } from '../fmt.js'
 
 const ORIGEM = { trigger: 'trigger', botao: 'botão', cli: 'make job', reset: 'reset' }
 
-export default function QuandoAtualiza({ estado, ocupado }) {
+export default function QuandoAtualiza({ estado, ocupado, ir }) {
   const [runs, setRuns] = useState(null)
   const [prev, setPrev] = useState(null)
   const [erro, setErro] = useState('')
@@ -26,9 +26,12 @@ export default function QuandoAtualiza({ estado, ocupado }) {
           ) : (
             <>
               <p className="agenda"><strong className="pov-stat">{t.horarioLocal}</strong>
-                <span>todo dia, horário de São Paulo<br /><small>no Atlas: Scheduled Trigger · cron UTC <code>{t.cron}</code></small></span></p>
-              <p className="selo-linha"><span className="selo pendente"><span aria-hidden="true">○</span>trigger não implantado neste alvo</span></p>
-              <p className="nota">Aqui, rode <code>make job</code> ou o botão do passo 3.</p>
+                <span>todo dia, horário de São Paulo<br /><small>cron UTC <code>{t.cron}</code></small></span></p>
+              <div className="info">
+                <p>Em produção: Atlas Scheduled Trigger todos os dias às {t.horarioLocal} (código pronto em <code>atlas-trigger/</code>).
+                  Nesta demo, o job roda pelo botão do passo 3.</p>
+                <button type="button" onClick={() => ir(3)}>← Ir ao passo 3</button>
+              </div>
             </>
           )}
         </section>

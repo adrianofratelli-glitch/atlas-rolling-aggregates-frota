@@ -5,13 +5,15 @@ async function req(url, opts) {
   try {
     r = await fetch(url, opts)
   } catch {
-    throw Object.assign(new Error(FORA), { foraDoAr: true })
+    // só a falha de rede significa backend fora do ar
+    throw new Error(FORA)
   }
   const corpo = await r.json().catch(() => null)
-  // em dev o proxy do Vite responde 5xx sem JSON quando a API não está de pé
-  if (!corpo && r.status >= 500) throw Object.assign(new Error(FORA), { foraDoAr: true })
   if (!r.ok) {
-    const msg = corpo?.erro ? `${corpo.erro}${corpo.acao ? ` — ${corpo.acao}` : ''}` : `HTTP ${r.status}`
+    const msg = corpo?.erro ? `${corpo.erro}${corpo.acao ? ` — ${corpo.acao}` : ''}`
+      // 502 sem corpo é o proxy do Vite sem resposta da API; outro 5xx sem JSON é erro inesperado
+      : r.status === 502 ? 'A API não respondeu pelo proxy (HTTP 502) — confira `make api`.'
+        : r.status >= 500 ? `Erro inesperado no servidor (HTTP ${r.status}).` : `HTTP ${r.status}`
     throw Object.assign(new Error(msg), { status: r.status })
   }
   return corpo ?? {}
