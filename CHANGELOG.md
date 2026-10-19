@@ -22,8 +22,8 @@
 - Step 1 drawer: new section "Como a ingestão grava (exemplo)" with the ingestion pipeline
   (`$match` → `$project` → `$merge` on `viagemId, seq`). `GET /api/raw` returns it as
   `ingestao` (same `query` block shape).
-
 - 107 tests on Atlas (9.0.4) and local MongoDB 8.0.34.
+
 ## 2.1.0 (2026-10-19)
 
 - **One "Consultar" step** replaces "Query scenarios", "Outside the base" and "Few samples":
