@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { get, post } from './api.js'
-import { ddmm } from './fmt.js'
+import { dataHora, ddmm } from './fmt.js'
 import { filtroInicial } from './comp/FiltroCenario.jsx'
 import ResetDemo, { Progresso } from './comp/ResetDemo.jsx'
 import DadoBruto from './passos/DadoBruto.jsx'
@@ -21,6 +21,15 @@ const PASSOS = [
   { titulo: 'Poucas amostras', lead: 'Trecho com pouco histórico: a consulta amplia até ter amostras suficientes.', C: PoucasAmostras },
 ]
 const ALVO = { atlas: 'MongoDB Atlas', local: 'Docker local' }
+
+// Sem trigger nada ingere de hora em hora: o que importa é quando a base foi gerada.
+// /api/estado não traz o último observadoEm da raw, então usa o último job_run.
+function Frescor({ estado }) {
+  if (estado.trigger?.implantado) {
+    return estado.simuladoAte ? <span className="nota">ingestão simulada programada até {ddmm(estado.simuladoAte)}</span> : null
+  }
+  return estado.ultimoJob ? <span className="nota">base gerada em {dataHora(estado.ultimoJob.iniciadoEm)}</span> : null
+}
 
 const passoDaUrl = () => {
   const n = Number(new URLSearchParams(window.location.hash.slice(1)).get('passo'))
@@ -173,7 +182,7 @@ export default function App() {
             })}
           </ol>
           <div className="trilho-pe">
-            {estado?.simuladoAte && <span className="nota">ingestão simulada programada até {ddmm(estado.simuladoAte)}</span>}
+            {estado && <Frescor estado={estado} />}
             <ResetDemo reset={reset} onConfirmar={iniciarReset} abrirRef={abrirReset} />
           </div>
         </nav>
