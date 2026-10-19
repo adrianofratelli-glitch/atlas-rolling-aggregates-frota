@@ -61,3 +61,10 @@ def test_guardar_escrita_recusa_demo(monkeypatch):
 
 def test_mascarar_host():
     assert dbmod.mascarar("x.mongodb.net:27017") == "<host>"
+
+
+def test_bootstrap_remove_indice_fora_do_contrato(db_sessao):
+    db_sessao.trecho_observacoes.create_index("ingeridoEm", name="ingeridoEm_1")
+    bootstrap(db_sessao)
+    nomes = {i["name"] for i in db_sessao.trecho_observacoes.list_indexes()}
+    assert nomes == INDICES["trecho_observacoes"]

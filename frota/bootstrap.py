@@ -62,6 +62,10 @@ def bootstrap(db: Database) -> dict:
     for nome, modelos in indices().items():
         coll = db[nome]
         atuais = {i["name"]: i for i in coll.list_indexes()}
+        # índice que não está no contrato (ex.: resto de banco criado pelo desenho v1)
+        previstos = {m.document["name"] for m in modelos} | {"_id_"}
+        for velho in set(atuais) - previstos:
+            coll.drop_index(velho)
         for m in modelos:
             doc = m.document
             atual = atuais.get(doc["name"])
