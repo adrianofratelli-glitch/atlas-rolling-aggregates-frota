@@ -1,47 +1,45 @@
 # Arquitetura
 
-Extraído do código em `frota/`, `jobs/`, `api/` e `frontend/`.
+Extraído do código em `frota/`, `jobs/`, `scripts/`, `api/`, `frontend/` e `atlas-trigger/` (v2.0.0).
 
 ## Componentes
 
 | Módulo | Responsabilidade |
 |---|---|
-| `frota/settings.py` | `.env` → URI, nomes de banco, porta, valores iniciais da `config`. |
-| `frota/db.py` | `MongoClient` único por URI (`w=majority`, `retryWrites`), codec tz-aware UTC, guarda `guardar_escrita` (destrutivo só em `*_test`/`*_fixtures` ou com `ALLOW_DEMO_DB_WRITE=1`). |
-| `frota/schemas.py` | `$jsonSchema` de cada collection (`strict`/`error`). |
-| `frota/bootstrap.py` | `createCollection`/`collMod` + índices + TTL via `collMod`; idempotente. |
-| `frota/config.py` | Documento `config` `_id: "ativa"`, validação de turnos, `versao` incrementada a cada mudança. |
-| `frota/janela.py` | Janela semiaberta em dias locais, `derivar_chave` (dow/turno de um instante), validação de turnos. |
-| `frota/pipelines/` | `camada1`, `camada2`, `raw_onthefly`, `expressoes` (turno/dow gerados da config). Cada estágio carrega comentário. |
-| `frota/pipelines/simples.py` | Modo simples (default): raw → média num pipeline, `$out`. |
-| `frota/job.py` | Despacho por `modoMaterializacao` (simples × incremental) e grão (turno × hora); assinatura e cobertura do grão para decidir carga/recarga/incremental; planejamento da camada 1 (D-1…D-k ∪ atrasos pelo watermark), execução das camadas, lease em `job_locks`, retry com backoff, `job_runs`. |
-| `frota/consulta.py` | `fallback` (find ≤ 21 docs + hierarquia) e `onthefly` (mesma pergunta na raw). |
-| `frota/explain.py` | Resumo do `explain("executionStats")` (estágio vencedor, índices, keys/docs examinados). |
-| `frota/capo.py` | Metadados lidos de `listCollections`/`listIndexes` e badges derivados do pipeline executado. |
-| `frota/gerador.py`, `frota/seed.py`, `frota/simulacao.py` | Dados sintéticos determinísticos, relógio simulado, `ingestao_pendente`, avanço de dias, injeção de atraso. |
-| `jobs/materializar.py` | CLI do job (o que o agendador chamaria). |
-| `api/main.py` | FastAPI 8410; serve `frontend/dist` quando compilado. |
-| `frontend/` | Vite + React 5410, proxy para 8410. Sem lógica de negócio. |
+| `frota/settings.py` | `.env` → alvo (Atlas se `MONGODB_URI` preenchida, senão Docker 27027; `FROTA_MONGO=local` força), bancos, porta, semente. Constantes de negócio no código: `TZ`, `JANELA_DIAS=180`, `MIN_AMOSTRAS=5`, `TTL_RAW_DIAS=200`, `DIAS_SIMULADOS=14`, TTL do salvo (padrão 7, máx. 30), `JOB_HORA_LOCAL=(3, 10)`, crons UTC do job e da ingestão. Sem collection `config`. |
+| `frota/db.py` | `MongoClient` único por URI (`w=majority`, `retryWrites`), codec tz-aware UTC, `guardar_escrita` (destrutivo só em `*_test` ou com `ALLOW_DEMO_DB_WRITE=1`), `mascarar` (tira host/porta/URI de mensagens de erro). |
+| `frota/schemas.py` | `$jsonSchema` de cada collection (`strict`/`error`) e o `enum` de tipos de veículo. |
+| `frota/bootstrap.py` | `createCollection`/`collMod` só quando o contrato mudou, índices, ajuste de TTL e remoção de índices fora do contrato; idempotente. |
+| `frota/janela.py` | Funções puras: `inicio_dia`, `hoje_local`, `janela_padrao`, `horas_da_faixa` (semiaberta, cruza meia-noite), atalhos Manhã/Tarde/Noite, `proximo_job`, `periodo_para_intervalo` (padrão, datas, últimos N dias). |
+| `frota/pipelines/` | Builders comentados (`Estagio(comentario, estagio)`): `job` (raw → base), `cenario` (`base` e `raw`, com `$merge` opcional em `consultas_salvas`), `ingestao` (fila → raw). |
+| `frota/job.py` | `rodar_job(db, data_ref, origem)`: lê o relógio do servidor (`hello.localTime`), roda o pipeline, limpa `atualizadoEm < inícioDoRun`, registra `job_runs` (erro mascarado). |
+| `frota/cenario.py` | `Filtro` (validação, chave sha1), `consultar`: base pronta com ampliação por poucas amostras, ou sob demanda na raw com leitura/gravação em `consultas_salvas`. |
+| `frota/ingestao.py` | `ingerir(db, agora)`: escolhe os `_id` já vencidos da fila, `$merge` só deles e apaga só eles. |
+| `frota/previa.py` | Prévia do próximo job (só leitura): dia que entra, dia que sai, chaves que somem. |
+| `frota/operadores.py`, `frota/mongosh.py` | Bloco `query` (lê, grava, mongosh, operadores explicados) e serialização para JSON/mongosh. |
+| `frota/gerador.py`, `frota/seed.py` | Gerador determinístico (perfis `demo` e `teste`, padrões por dia/hora/veículo, trechos esparsos) e `resetar` em torno do instante do clique (raw até agora, 14 dias futuros na fila, job). |
+| `jobs/materializar.py` | CLI do job (`--data`, `--db`), origem `cli`. |
+| `scripts/` | `bootstrap_db.py`, `seed.py`, `ingerir.py`, `export_pipelines.py` (docs + Functions), `trigger_deploy.sh`, `limpar_atlas.py`, `ui_smoke.py`, `capturar_prints.py`. |
+| `atlas-trigger/` | App App Services com 2 Scheduled Triggers (`jobDiario` 03:10 SP, `ingestaoSimulada` de hora em hora); Functions geradas por `make pipelines`. Não implantado na demo. |
+| `api/main.py` | FastAPI 8410; único lugar que lê `datetime.now()`; serve `frontend/dist` quando compilado. |
+| `frontend/` | Vite + React 5410, proxy para 8410, uma página com roteiro de 7 passos. Sem lógica de negócio. |
 
 ## Fluxo
 
-Simples (default):
 ```
-trecho_observacoes ──($match janela → turno/dow → $group → $out)──▶ trecho_media_historica
-```
-
-Incremental (grão `turno` em `trecho_bucket_turno` ou `hora` em `trecho_bucket_diario`):
-```
-trecho_observacoes ──(camada 1: $match dias → $group dia local×hora → $merge replace)──▶ trecho_bucket_diario
-trecho_bucket_diario ──(camada 2: $match janela → turno/dow → $group → $merge+runId | $out)──▶ trecho_media_historica
-trecho_media_historica ──(find {origem, destino, tipoVeiculo}, ≤ 21 docs)──▶ fallback de ETA
+ingestao_simulada ──(de hora em hora: $match _id ∈ vencidos → $project → $merge on viagemId+seq)──▶ trecho_observacoes
+trecho_observacoes ──(job: $match janela → $set dow/hora → $group → $project → $merge replace)──▶ trecho_media_dow_hora
+trecho_media_dow_hora ──($match chave + dow + hora → $group)──▶ cenário "Job diário"
+trecho_observacoes ──(outro período: $match → $set → $match → $group → $project [→ $merge])──▶ cenário "Sob demanda" / consultas_salvas
 ```
 
 ## Decisões de código
 
-- `asOf` sempre por parâmetro; `$$NOW` só em `atualizadoEm` (auditoria).
-- Limites de janela calculados em Python com `zoneinfo` e enviados prontos ao pipeline.
-- Turno/dow são expressões geradas da `config` e compartilhadas pela camada 2 e pela consulta na raw.
-- Contadores de inseridos/atualizados/removidos são derivados de contagens antes/depois
-  (o `$merge` não devolve contagens).
-- Job e mudanças de config vindos da UI são serializados por um lock de processo, além do lease no banco.
+- `dataRef`/`agora` sempre por parâmetro; `$$NOW` só em `atualizadoEm`/`criadoEm`.
+- Limites calculados em Python com `zoneinfo` e enviados prontos; limite superior `$lt`.
+- `$merge` sempre `whenMatched: "replace"`; documentos guardam somas e contagem.
+- Limpeza do job pelo relógio do servidor: dois runs sobrepostos não se apagam; sem lease.
+- `/api/reset` libera a escrita no banco da demo só para si (`permitir=True`) e roda numa
+  thread; durante o reset `/api/raw`, `/api/job` e `/api/cenario` respondem 409 e não há
+  bootstrap.
+- Respostas e erros da API passam por `mascarar`; o campo `owner` nunca sai.

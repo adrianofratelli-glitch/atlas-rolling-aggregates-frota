@@ -1,272 +1,197 @@
-# Rolling-window aggregates on MongoDB — offline ETA fallback for a fleet
+# Rolling-window aggregates on MongoDB: an offline ETA fallback for a fleet
 
 An executable proof of value for one question: **how do raw trip-leg records become
-pre-computed averages, queryable in milliseconds by origin, destination, vehicle type and
-period of the day (morning / afternoon / night), without computing anything at ETA time?**
-The window is **D-1 to D-180**; today is always excluded. Day of the week is an optional
-extension.
+pre-computed averages that answer "every Friday afternoon, this leg, this truck" in
+milliseconds, without computing anything at ETA time?** The window is **D-1 to D-180**;
+today is always excluded. A daily job materializes the averages with `$merge` (the
+"materialized view" MongoDB does not ship as a single object), and any combination of
+days of the week, hour range and vehicle type is answered by summing a handful of
+ready documents.
 
-![ETA fallback: the averaged answer for Friday night, the derived window and the exact key read from the index](docs/screenshots/01-consulta-eta.png)
+![Step 4: Friday 12h–18h answered from 6 ready documents, with the executed query and the job pipeline that built the base](docs/screenshots/04-consultar-cenarios.png)
 
-> All data is synthetic (a generic fuel distributor with a fleet). **The data model
-> demonstrates the pattern; it is not a production schema proposal.** No customer name,
-> cluster hostname or connection string is in this repository.
+> All data is synthetic (a generic fuel distributor with a fleet). **The data model is a
+> reference model: adapt it to the real master data** (point codes, vehicle types, trip
+> identity). No customer name, cluster hostname, key or connection string is in this
+> repository.
 
-## The demonstration
+## The guided demo: one page, seven steps
 
-### 1 · Ask for an ETA when the online service is down
+The UI is a single page with a step rail on the left, the current step in the centre and
+Previous/Next buttons (the rail is also clickable; the URL keeps `#passo=N`). Every step
+that runs something has a **"Ver query / chamada executada"** drawer, closed by default:
+the collections read and written, the exact command for `mongosh` and one plain sentence
+for each operator used.
 
-Pick origin, destination, vehicle type and departure hour; the reference date (`asOf`)
-defines the simulated "today". The screen shows what that date derives — the half-open
-window `[D-180, today)`, the day of the week (1 = Sunday) and the shift with its limits —
-and the exact key read: `{origin, destination, vehicleType, dow: 6, shift: "N"}`.
+| # | Step | What it shows | API |
+|---|---|---|---|
+| 1 | Raw data and schema | 12 observations of one leg and vehicle spread over days and hours; the `$jsonSchema` and the indexes **read from the database**, each with its reason | `GET /api/raw` |
+| 2 | The rule | the 180-day window with today's concrete dates, the key (leg × vehicle × day of week × hour), São Paulo time | `GET /api/estado` |
+| 3 | Build the base | "Rodar job agora": the job pipeline stage by stage, `$merge` highlighted, counters (read, written, removed, time) | `POST /api/job` |
+| 4 | Query scenarios | leg, vehicle, day chips, hour range (Morning 06–12, Afternoon 12–18, Night 18–06), default window; mean ± std dev, km, samples, documents read; badge **"Job diário"** | `POST /api/cenario` |
+| 5 | Outside the base | specific dates or "last N days": computed on the raw now; optional **persist** with a validity (TTL); repeating the query reads the saved result; badge **"Sob demanda"** | `POST /api/cenario` |
+| 6 | When it refreshes | the schedule (03:10 São Paulo), the last runs from `job_runs` and a read-only preview of tomorrow's job: the day that enters, the day that leaves, keys that would disappear | `GET /api/job_runs`, `GET /api/proximo-job` |
+| 7 | Few samples | a deliberately sparse leg: the answer widens step by step and says which level it used, labelled **"rule to validate with the customer"** | `POST /api/cenario` |
 
-The answer comes from **one `find` on a unique index, at most 21 documents** (7 days ×
-3 shifts). The grid under the result is that read: every day/shift combination for the
-leg, with the requested cell outlined and the cells summed into the answer shaded.
+![Step 1: a sample of the raw collection next to its validator and indexes, read from the database](docs/screenshots/01-dado-bruto-e-schema.png)
 
-![The 21 documents of one leg and vehicle type: day of week × shift, with sample counts](docs/screenshots/02-grade-dow-turno.png)
+![Step 5: the same scenario for specific dates, computed on the raw collection and not saved](docs/screenshots/05-fora-da-base.png)
 
-When the specific cell has too few samples, the answer steps down — `dow+shift` →
-`shift` (all days) → `overall` → `no_history` — and says which level it used. That
-hierarchy is a **proposal to validate with the customer**. Rolling up is only correct
-because the aggregate keeps `sum` and `count`, not just the mean.
+![Step 6: the schedule, the preview of tomorrow's job and the run history](docs/screenshots/06-quando-atualiza.png)
 
-### 2 · Same question, raw versus materialized, with the real `explain`
+More screenshots: [step 3](docs/screenshots/03-gerar-a-base.png) and
+[step 7](docs/screenshots/07-poucas-amostras.png).
 
-![Raw on-the-fly versus materialized, side by side, with executionStats](docs/screenshots/03-raw-vs-materializado.png)
-
-The same window and question are answered from the raw collection (computed now) and from
-the aggregate (read ready). Both columns come from `explain("executionStats")`, run only
-when the presenter clicks.
-
-### 3 · Two designs, one result
-
-![Simple and incremental designs run over the same raw data and produce the same aggregate](docs/screenshots/04-simples-vs-incremental.png)
-
-| | **Simple** (default) | **Incremental** (option for scale) |
-|---|---|---|
-| Flow | raw → `$group` over the whole window → `$out` | raw → buckets per **shift** (or hour) → `$out` |
-| Oracle equivalent | MV with a scheduled COMPLETE refresh | MV with fast refresh |
-| Late data | picked up by the next run (each run re-reads 180 days) | D-1…D-k plus an `ingestedAt` watermark |
-| Changing shift limits | the next run applies them | shift grain rebuilds layer 1; hour grain recomputes layer 2 only |
-| Raw retention | ≥ 181 days | can be short; buckets carry the history |
-
-Both produce **exactly the same aggregate** — tested on hand-built fixtures and on
-synthetic data, with the `civil_day` and `operational_day` night rules, with and without
-day of week, and switching design and grain across days (`tests/test_modos.py`). The tab
-runs both over the same raw data and compares them live.
-
-**Recommendation: start with the simple design.** It is one pipeline, idempotent by nature
-(`$out` swaps the collection atomically and keeps its indexes and validator), and it was
-the fastest in the benchmark. The incremental design earns its place when raw retention
-must be short, or when re-reading 180 days every day becomes expensive.
-
-### 4 · The job, late data and the moving window
-
-![Job counters, the executed pipeline and the window edges: the day that left and the day that entered](docs/screenshots/05-job-e-janela.png)
-
-`$out` and `$merge` refresh nothing by themselves: a scheduled job does. The tab runs it
-with any `asOf`, injects a late observation two days back, re-runs it (the correction
-appears; a third run changes nothing) and advances the simulated clock one day, showing
-the day that entered, the day that left and the aggregates removed.
-
-### 5 · Change the business rule
-
-![Configuration: shift limits, night rule, minimum samples and the materialization design](docs/screenshots/06-config.png)
-
-Shift limits, the night rule (does Friday 01:00 count as Friday night?), the minimum
-sample count, the design, the bucket grain and whether day of week is part of the key live
-in one versioned `config` document. Saving reports exactly what was re-read. The fallback
-derives its key with the config version that produced the aggregate, so a change that has
-not been materialized yet cannot mix new shifts with old averages.
-
-### 6 · Under the hood
-
-![Pipelines as sent to the driver, validators, indexes and TTLs read from the database](docs/screenshots/07-por-baixo-do-capo.png)
-
-Every pipeline is shown exactly as sent to the driver, commented stage by stage and ready
-for `mongosh`. Validators, indexes and TTLs are read from `listCollections` and
-`listIndexes`. Feature badges (`$merge`, `$out`, Bucket Pattern, Computed Pattern,
-`$dateTrunc` with timezone, unique index, TTL, `$jsonSchema`) are derived from the stages
-and indexes actually used by the operation on screen.
-
-## Architecture
+## How it works
 
 ```mermaid
 flowchart LR
-  R["trecho_observacoes<br/>raw · one doc per leg"]
-  M["trecho_media_historica<br/>{origin, destination, vehicleType, dow, shift}<br/>≤ 21 docs per leg and vehicle"]
-  BT["trecho_bucket_turno<br/>local day × shift · sum + count"]
-  A["ETA fallback<br/>find on the unique index"]
-  R -- "SIMPLE (default)<br/>$group whole window + $out" --> M
-  R -. "INCREMENTAL<br/>D-1…D-k ∪ late days, $merge" .-> BT
-  BT -. "$group window + $out" .-> M
-  M --> A
+  F["ingestao_simulada<br/>demo only: future observations"]
+  R["trecho_observacoes<br/>raw · one doc per leg travelled"]
+  B["trecho_media_dow_hora<br/>{origin, destination, vehicleType, dow, hour}<br/>≤ 168 docs per leg and vehicle"]
+  S["consultas_salvas<br/>on-demand results · TTL"]
+  A["ETA fallback<br/>sum of ready documents"]
+  F -- "hourly: $merge on (viagemId, seq)" --> R
+  R -- "daily job 03:10: $isoDayOfWeek / $hour → $group → $merge replace" --> B
+  B -- "$match dow ∈ days, hour ∈ range → $group" --> A
+  R -. "other period: same computation, optional $merge" .-> S
 ```
 
-- All dates are BSON `Date` in UTC. "Day", "hour" and "day of week" are interpreted in
-  `America/Sao_Paulo` inside the pipeline (`$dateTrunc`, `$hour`, `$dayOfWeek` with
-  `timezone`), never from date strings.
-- The window is **half-open** and computed from `asOf` as a parameter — never `$$NOW` or
-  the system clock — so its edges are testable and the window can be moved: 00:00:00.000 of
-  D-180 enters, 23:59:59.999 of D-181 leaves, 23:59:59.999 of D-1 enters, 00:00:00.000 of
-  today leaves.
-- "Every Friday night" is the key `{dow: 6, shift: "N"}`. The key has **no date**, so it
-  combines every eligible Friday in the window.
-- Every collection is created with a `$jsonSchema` validator (`strict`, `error`); a date
-  sent as a string is rejected.
+- **The daily job** reads the raw collection in the half-open window
+  `[00:00 local of (dataRef − 180), 00:00 local of dataRef)`, derives the ISO day of the
+  week (`$isoDayOfWeek`, 1 = Monday … 7 = Sunday) and the hour (`$hour`), both with
+  `timezone: "America/Sao_Paulo"`, groups by leg × vehicle × day × hour keeping **count,
+  sum, sum of squares and km sum**, and writes with
+  `$merge { on: <unique key>, whenMatched: "replace", whenNotMatched: "insert" }`.
+  Re-running it gives the same result. Keys that left the window are removed afterwards by
+  `atualizadoEm < start of the run`, where the start comes from the **server clock**
+  (`hello.localTime`), so two overlapping runs (trigger and button) never delete each
+  other's output.
+- **`dataRef` is a parameter.** Every window, ingestion and validity function receives the
+  reference date or instant; only entrypoints (API, CLI, trigger) read the clock, and
+  `$$NOW` is used only for audit fields. The upper bound is always `$lt`.
+- **A scenario in the default window** is a `$match` on the unique index plus a `$group`
+  over at most 7 × 24 documents. Mean = sum / n; standard deviation =
+  √(sum of squares / n − mean²). Hour ranges are half-open: Night 18→06 is hours 18–23
+  and 0–5.
+- **Any other period** (specific dates, last N days) runs the same computation on the raw
+  collection with the compound index `{origem, destino, tipoVeiculo, observadoEm}`. If the
+  presenter ticks "persist", `$merge` into `consultas_salvas` is the last stage of the
+  same aggregate; the key is a hash of the normalized filter. Absolute periods keep the
+  result for 1–30 days (default 7); relative periods expire at the next job. A TTL index on
+  `expiraEm` deletes it; reads also filter `expiraEm > now` because the TTL monitor runs
+  about once a minute.
+- **Few samples** (fewer than 5, only on the ready base): requested days and hours → all
+  days of the week at the same hours → the whole day on the requested days → no history.
+  The answer names the level. The order is a proposal, not a decision.
+- Every collection has a `$jsonSchema` validator (`strict`, `error`) created by an
+  idempotent bootstrap; a date sent as a string is rejected.
 
-Data model, index-by-index justification, retention trade-offs, the time series
-alternative and operator compatibility are in [`docs/visao-tecnica.md`](docs/visao-tecnica.md)
-(Portuguese).
+### Reference data model
+
+| Collection | Role | Key fields | Indexes |
+|---|---|---|---|
+| `trecho_observacoes` | raw, one document per leg travelled | `origem`, `destino` (stable codes), `tipoVeiculo` (TOCO, TRUCK, CARRETA, BITREM), `veiculoId`, `viagemId`, `seq`, `observadoEm` (departure, UTC), `distanciaKm`, `tempoMin` | `{viagemId, seq}` unique (dedup) · `{origem, destino, tipoVeiculo, observadoEm}` (on-demand) · `{observadoEm}` TTL 200 days (job range + retention) |
+| `trecho_media_dow_hora` | the materialized base | key + `n`, `somaMin`, `somaQuadMin`, `somaKm`, `mediaMin`, `mediaKm`, `janelaInicio`, `janelaFim`, `dataRef`, `runId`, `atualizadoEm` | `{origem, destino, tipoVeiculo, dow, hora}` unique (required by `$merge on`) |
+| `consultas_salvas` | on-demand results kept for a while | `_id` = filter hash, `filtro`, sums, `periodo` (absolute/relative), `criadoEm`, `expiraEm` | `{expiraEm}` TTL 0 |
+| `job_runs` | run history | `origem` (trigger, button, cli, reset), `dataRef`, `status`, counters, masked error | `{iniciadoEm: -1}` |
+| `pontos`, `trechos` | lookup for the selects | code → name/city; valid origin/destination pairs | `{origem, destino}` unique on `trechos` |
+| `ingestao_simulada` | **demo only**: simulates data arriving, not part of the model | same schema as the raw | `{viagemId, seq}` unique, `{observadoEm}` |
+
+Sums are rounded to 6 decimals so repeated runs are bit-for-bit equal. Median and
+percentiles are not used: they do not compose across hours from sum and count.
 
 ### Equivalent to an Oracle materialized view
 
 | | Oracle MV | This PoV |
 |---|---|---|
-| Materialized result | MV segment | `trecho_media_historica` collection |
-| Who refreshes it | `DBMS_MVIEW.REFRESH` / scheduler job | application job (`jobs/materializar.py`) called by a scheduler |
-| Window relative to today | the query would use `SYSDATE`; non-repeatable expressions like `SYSDATE` make the MV **ineligible for fast refresh**, so it would be a scheduled COMPLETE refresh | `asOf` is a **parameter**; the limits reach the pipeline already computed |
-| Complete refresh | `COMPLETE` | **simple** design: `$group` + `$out` |
-| Incremental refresh | fast refresh needs an MV log and an eligible query | **incremental** design: buckets for k days plus late days |
-| New database object | table/MV plus DDL approval | collections in the MongoDB already in the solution; no new adapter |
+| Materialized result | MV segment | `trecho_media_dow_hora` collection |
+| Who refreshes it | `DBMS_MVIEW.REFRESH` / scheduler | daily job (Atlas Scheduled Trigger in production; the step-3 button here) |
+| Window relative to today | `SYSDATE` makes the MV ineligible for fast refresh, so a scheduled COMPLETE refresh | `dataRef` is a parameter; the limits reach the pipeline already computed |
+| Refresh | COMPLETE | `$group` over the window + `$merge` replace (idempotent) |
+| New database object | table/MV plus DDL approval | collections in the MongoDB already in the solution |
 
 The comparison is architectural, not a performance claim: Oracle was not measured.
 
-## Measured results
+## Scheduling: Atlas Scheduled Triggers
 
-### Tests
+`atlas-trigger/` holds an App Services app in `appservices` CLI format with two Scheduled
+Triggers: `jobDiario` (`10 6 * * *` UTC = 03:10 in São Paulo, which has had no daylight
+saving time since 2019) and `ingestaoSimulada` (minute 5 of every hour, moves already
+"happened" observations from `ingestao_simulada` to the raw collection). Their Functions
+are **generated** by `make pipelines` from the same Python builders, and
+`tests/test_trigger_export.py` checks that the exported pipeline equals the Python one and
+runs the Functions in Node with a fake `context`.
 
-The same suite runs against both targets. On 2026-10-16:
+**The triggers are not deployed in this demo.** The deploy needs an Atlas key with Project
+Owner on the cluster's project; `make trigger-deploy` stops and explains when the session
+lacks it. Without them, step 6 shows the planned schedule and says that, in this demo,
+the job runs from the step-3 button. See [`atlas-trigger/README.md`](atlas-trigger/README.md).
 
-| Target | Version | Result |
-|---|---|---|
-| MongoDB Atlas, shared portfolio cluster (M30, AWS São Paulo) | **9.0.4** | **109 passed** in 32 min (the duration is network: ~260 ms per round trip from the test machine) |
-| Local Docker, single-node replica set | **8.0.34** | **109 passed** in 12 s |
-| Acceptance from an empty volume: `make up && make seed PROFILE=small && make job && make test` | 8.0.34 | passed |
+## Resetting the demo
 
-| File | Tests | Covers |
-|---|---:|---|
-| `test_camada1.py` | 7 | buckets by local day and hour, timezone (23:30 in São Paulo), today and D-181 excluded, sum/count/min/max, idempotence, incremental D-1…D-k, a bucket that disappeared from raw |
-| `test_camada2.py` | 9 | "Friday night" combines three Fridays, both night rules, the four window edges, shift and vehicle separation, both cleanup modes (validator and indexes survive `$out`) |
-| `test_atrasos_e_lock.py` | 11 | late data within and beyond k, empty watermark, concurrent job refused and recorded, expired and lost leases, resume after failure, retry with correct counters, a re-sent day is not duplicated |
-| `test_fallback.py` | 16 | the response contract, every fallback level, `explain` IXSCAN ≤ 21, raw equals materialized, validators |
-| `test_modos.py` | 16 | the three designs produce the same aggregate (fixtures and synthetic, both night rules, no day of week, switching design across days); shift grain rebuilds on config change; missing coverage forces a rebuild |
-| `test_equivalencia.py` | 4 | deterministic generator; aggregate equals raw for a random sample of keys |
-| `test_api.py` | 11 | API contracts, derived context and badges, design comparison, an unsafe layer-2-only run is refused |
-| `test_resiliencia.py` | 35 | the "what if…?" battery below |
-
-| What a customer would ask | Tested answer |
-|---|---|
-| What if we change shifts, night rule or cleanup mode? | 3 shift sets × 2 rules × 2 modes = 12 combinations; aggregate equals raw |
-| What about daylight saving time? | `America/New_York` (25-hour day on 2026-11-01): calendar-day window, aggregate equals raw |
-| Is the fallback down while the job runs? | continuous reads during 3 jobs, both modes: no error, never `no_history` |
-| Two schedulers firing together? | one runs, the other is refused; the result equals a single run |
-| The fleet stopped, or the job did not run for months? | an empty window empties the aggregate; a job stopped for six days recovers all six |
-| Very late data, or older than the window? | 300 late rows across 40 days all detected; data older than the window ignored |
-| Config changed but the job has not run? | the key is derived with the config version that produced the aggregate, and the answer warns |
-| Two people editing the config? | the second write is refused (optimistic version) |
-| Bad input on the API? | hour 24, invalid date, free-text instant, `minSamples=0`, overlapping shifts, non-editable field, `days=500`: 4xx, nothing changed |
-| Database down? | the API answers 503 with the action in ~0.5 s; `/health/live` stays 200 |
-
-**Real chaos** (`scripts/caos_local.py`, local Docker): `mongod` is frozen with
-`docker pause` in the middle of the initial load. With an 8 s pause the job waits and
-finishes; with 20 s (beyond `serverSelectionTimeoutMS`) the first attempt fails and the
-retry with backoff finishes it. Queries during the pause fail in 1.5 s instead of hanging.
-In both cases the result is identical to a run without failure.
-
-### Benchmark
-
-`make bench`, profile `escala`: 1,860,697 observations, 2,000 legs, 1,500 vehicles,
-200 days, on MongoDB Atlas M30 (9.0.4, 3-node replica set, `w: majority`). Measured on
-2026-10-16 while the test suite was also running against the same shared cluster. Raw data
-in `docs/bench-results-atlas.json`.
-
-| Measure | Result |
-|---|---:|
-| **Simple**: whole window (1.68 M observations → 164,007 averages) | **48.2 s** |
-| Simple, after advancing one day | 49.4 s |
-| Incremental by shift, initial load (layer 1 309.9 s + layer 2 39.0 s) | 350.9 s |
-| **Incremental by shift, daily run** (layer 1: 3 days, 27,350 obs, 27.9 s; layer 2: 1,292,417 buckets, 47.0 s) | **77.0 s** |
-| Incremental by shift, advancing a day with late arrivals (13 days, 120,158 obs) | layer 1 116.7 s + layer 2 39.8 s |
-| Fallback on the server (`executionTimeMillis`, 100 keys) | p50 **0 ms** · p95 0 ms · max 0 ms (21 docs, IXSCAN) |
-| Same question on raw, on the server | p50 3 ms · p95 4 ms · max 6 ms (167 / 374 / 744 docs examined) |
-| Fallback seen from the client | one round trip: p50 283 ms with a 262 ms ping |
-
-| Storage (`collStats`) | docs | data | storage | indexes |
-|---|---:|---:|---:|---:|
-| raw `trecho_observacoes` | 1,869,938 | 423.9 MB | 127.8 MB | 386.2 MB |
-| buckets `trecho_bucket_turno` | 1,299,680 | 349.2 MB | 142.8 MB | 182.4 MB |
-| aggregate `trecho_media_historica` | 163,999 | 51.3 MB | 15.8 MB | 15.3 MB |
-
-**What the numbers say.**
-
-- **The simple design was the fastest refresh** (48 s versus 77 s for the incremental daily
-  run). With this generator a leg × vehicle is travelled less than once per shift per day,
-  so buckets barely compress (1.68 M → 1.30 M) and layer 2 costs about as much as
-  re-reading the raw data.
-- **Per-document `$merge` is the expensive path on Atlas.** In the first benchmark round
-  (`docs/bench-results-atlas-rodada1.json`) layer 2 took ~170 s with `$merge` + runId and
-  43 s with `$out`, which is why `$out` became the default in every design.
-- **The query is the measured win:** 0 ms on the server and 21 documents, independent of how
-  much history a leg has. On raw, the same answer examines 167–744 documents and grows with
-  volume and window.
-- Seen from the client, the fallback costs one round trip: the current config is cached for
-  10 s, and the key is derived from the config version stored in the aggregate.
-
-Not measured: hour grain with `$out`, a dedicated Atlas tier (the cluster is shared with
-other PoVs), the customer's real volume and route repetition.
+"Resetar demo" (bottom of the rail, with a confirmation that shows the click time) rebuilds
+`frota_eta` around **the instant of the click**: raw data from D-200 until now, the next
+14 days of observations in `ingestao_simulada`, and one job run, with a progress bar. The
+route unlocks writes on the demo database only for itself. `make seed` does the same from
+the CLI. Without the hourly ingestion trigger, **reset on the morning of the demo** so the
+base is built for that day. Locally, `make ingerir` performs one ingestion round by hand.
 
 ## Running it
 
-Requirements: Python 3.12, Node 20+ and one MongoDB target, picked automatically from
-`.env` (`FROTA_MONGO=auto`):
+Requirements: Python 3.12, Node 20+ and one MongoDB target, picked from `.env`
+(`FROTA_MONGO=auto`):
 
 - **Atlas** when `MONGODB_URI` is set.
-- **Local** when it is empty (a clean machine) or with `FROTA_MONGO=local`: `make up`
-  starts MongoDB 8.0 in Docker on port 27027 with the open-files limit MongoDB recommends
-  (without it, WiredTiger panics after many `$out` runs).
+- **Local** when it is empty or with `FROTA_MONGO=local`: `make up` starts MongoDB 8.0 in
+  Docker on port 27027 (single-node replica set).
 
 ```bash
-make up                  # MongoDB (local only) + collections, validators, indexes
-make seed PROFILE=small  # ~74 thousand observations
-make job                 # materialize with asOf = today in São Paulo
-make test                # pytest against the target (database frota_eta_test)
-./start.sh               # API 127.0.0.1:8410 + UI 127.0.0.1:5410
+make up        # MongoDB (local only) + collections, validators, indexes
+make seed      # rebuild the demo database around now and run the job once
+./start.sh     # API 127.0.0.1:8410 + UI 127.0.0.1:5410
+make test      # pytest against the target (database frota_eta_test)
 ```
 
-Also: `make fixtures` (the hand-built contract dataset), `make job ASOF=2026-10-16`,
-`make advance DAYS=1`, `make bench`, `make reset`, `make pipelines`. Destructive scripts
-refuse the demo database unless the Makefile target passes `ALLOW_DEMO_DB_WRITE=1`.
+Also: `make job [DATA=YYYY-MM-DD]`, `make ingerir`, `make pipelines` (regenerates
+`docs/pipelines/` and the trigger Functions), `make trigger-deploy`,
+`make limpar-atlas [CONFIRMAR=1]`. Destructive scripts refuse the demo database unless
+`ALLOW_DEMO_DB_WRITE=1` is set (the `seed` target sets it). API errors never expose the
+host, port or URI.
 
-**Scheduling in production:** a CronJob, Cloud Scheduler or equivalent calls
-`python jobs/materializar.py` once a day after local midnight. The job holds a lease in
-`job_locks`; a concurrent run exits with code 3 and is recorded in `job_runs`. On Atlas, a
-Scheduled Trigger is a native alternative (not exercised here).
+## Tests
+
+The same 87 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
+portfolio cluster) and **local Docker 8.0.34**.
+
+| File | Covers |
+|---|---|
+| `test_janela.py` | half-open window, today excluded, `$lt`, São Paulo time including a 2018 DST date, hour ranges across midnight, periods, next job |
+| `test_job.py` | today excluded, job idempotent, two overlapping runs lose nothing, a key that left the window is removed, `$isoDayOfWeek` at local midnight, rounding, masked errors in `job_runs` |
+| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, absolute vs relative validity, period without raw data |
+| `test_ingestao.py`, `test_previa.py` | ingestion moves only what already happened and never loses arrivals; tomorrow's preview |
+| `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, reset; validators and indexes read from the database |
+| `test_trigger_export.py` | exported trigger pipelines equal the Python ones; Functions run in Node |
+| `test_api.py`, `test_operadores.py` | route contracts, the `query` block, 409 during reset, 422 on bad input, 503 without host |
 
 ## Limitations
 
-- Tested on Atlas M30 (9.0.4, shared) and local MongoDB 8.0; nothing with sharding or with
-  the customer's volume. `small` and `escala` are lab sizes.
-- The incremental design was slower than the simple one in this benchmark; it is kept for
-  short raw retention and for volumes where a full re-read becomes expensive.
-- Simple mean, outliers included. Median and percentile (`$median`, `$percentile`) do not
-  compose from sum and count.
-- The demo clock is simulated (`asOf`, `ingestao_pendente`). In production `ingestedAt` must
-  be stamped by the server on arrival; a client-assigned, out-of-order stamp can hide old
-  late data from the watermark.
-- The lease is 30 minutes, renewed before each layer and before every destructive step; a
-  single operation longer than the lease could still overlap.
+- Tested on a shared Atlas cluster (9.0.4) and local MongoDB 8.0; nothing with sharding or
+  with the customer's volume (the demo has ~347 thousand observations over 14 legs).
+- The triggers are code-complete and tested offline, but not deployed.
+- Simple mean and population standard deviation, outliers included.
+- The widening order for few samples and the hour shortcuts are proposals to validate.
+- The trigger Function uses a fixed UTC−3 offset; revise it and the cron if daylight saving
+  time returns to São Paulo.
 
 ## More
 
 Documentation in Portuguese, matching the UI:
 
-- [`docs/visao-tecnica.md`](docs/visao-tecnica.md) — data model, indexes, retention, pipelines, compatibility.
-- [`docs/roteiro-demo.md`](docs/roteiro-demo.md) — 10-minute demo script.
-- [`docs/decisoes-cliente.md`](docs/decisoes-cliente.md) — decisions to confirm with the customer.
-- [`docs/consultas.md`](docs/consultas.md) — `mongosh` commands with real output.
-- [`docs/pipelines/`](docs/pipelines/) — every pipeline, commented, as `.js` and `.json`.
-- [`docs/briefing/`](docs/briefing/) — architecture, queries and UI flows extracted from the code.
+- [`docs/visao-tecnica.md`](docs/visao-tecnica.md): data model, indexes, retention, pipelines, compatibility.
+- [`docs/roteiro-demo.md`](docs/roteiro-demo.md): the 7-step demo script.
+- [`docs/decisoes-cliente.md`](docs/decisoes-cliente.md): decisions to confirm with the customer.
+- [`docs/consultas.md`](docs/consultas.md): `mongosh` commands with real output.
+- [`docs/pipelines/`](docs/pipelines/): every pipeline, commented, as `.js` and `.json`.
+- [`docs/briefing/`](docs/briefing/): architecture, queries and UI flows extracted from the code.
 - [`CHANGELOG.md`](CHANGELOG.md).

@@ -1,118 +1,140 @@
 # Consultas no mongosh
 
-Comandos para conferir cada camada direto no banco. As saídas abaixo foram **copiadas do
-mongosh** sobre o dataset de fixtures (`make fixtures`, banco `frota_eta_fixtures`, asOf
-2026-10-16). Com o perfil sintético (`make seed`) os valores mudam; a forma não.
+Comandos para conferir cada etapa direto no banco. As saídas foram obtidas no banco da
+demo `frota_eta` logo depois de um reset em 2026-10-19 (dataRef 2026-10-19, janela
+`[2026-04-22T03:00Z, 2026-10-19T03:00Z)`). Os dados são sintéticos; depois de outro reset
+os números mudam, a forma não.
 
 ```bash
-mongosh "mongodb://localhost:27027/frota_eta_fixtures?replicaSet=rs0"
+mongosh "<sua connection string>/frota_eta"
 ```
 
 Os pipelines completos, comentados estágio a estágio, estão em [`pipelines/`](pipelines/)
 (`*.js` para colar no mongosh, `*.json` em EJSON). São gerados por `make pipelines` a
-partir dos mesmos módulos que o job executa.
+partir dos mesmos módulos que o job e a API executam.
 
-## 1. Agregado de um trecho/veículo (o que o fallback lê)
-
-```js
-db.trecho_media_historica.find(
-  { origem: "BASE-001", destino: "POSTO-0042", tipoVeiculo: "BITREM" },
-  { _id: 0, dow: 1, turno: 1, n: 1, somaMin: 1, mediaMin: 1, mediaKm: 1 }
-).sort({ dow: 1, turno: 1 })
-```
-```text
-[
-  { somaMin: 30, n: 1, dow: 1, turno: 'N', mediaMin: 30, mediaKm: 38 },
-  { somaMin: 45, n: 1, dow: 5, turno: 'N', mediaMin: 45, mediaKm: 39 },
-  { somaMin: 168, n: 3, dow: 6, turno: 'N', mediaMin: 56, mediaKm: 40 },
-  { somaMin: 70, n: 1, dow: 7, turno: 'N', mediaMin: 70, mediaKm: 42 }
-]
-```
-
-`{dow: 6, turno: "N"}` soma as três sextas (25/09, 02/10, 09/10). `dow: 1` é a borda
-inicial (19/04 00:00:00.000) e `dow: 5` a borda final (15/10 23:59:59.999).
-
-## 2. Explain da consulta de fallback
+## 1. A base pronta de um trecho (sexta, 12h–18h)
 
 ```js
-const e = db.trecho_media_historica
-  .find({ origem: "BASE-001", destino: "POSTO-0042", tipoVeiculo: "BITREM" })
-  .explain("executionStats");
-printjson({ stage: e.queryPlanner.winningPlan.stage,
-            input: e.queryPlanner.winningPlan.inputStage.stage,
-            index: e.queryPlanner.winningPlan.inputStage.indexName,
-            keys: e.executionStats.totalKeysExamined,
-            docs: e.executionStats.totalDocsExamined })
-```
-```text
-{ stage: 'FETCH', input: 'IXSCAN', index: 'chave_media_unica', keys: 4, docs: 4 }
-```
-
-## 3. Hoje e bordas fora da janela não vazam
-
-As observações 5, 7 e 9 do contrato (hoje 20:00, D-181 23:59:59.999, hoje 00:00) têm
-`tempoMin: 999`. Estão na raw e em nenhum agregado:
-
-```js
-db.trecho_observacoes.countDocuments({ tempoMin: 999 })            // 3
-db.trecho_media_historica.countDocuments({ somaMin: { $gte: 999 } }) // 0
-```
-
-## 4. Buckets no dia/hora **local**
-
-A observação de terça 13/10 23:30 em São Paulo é 14/10 02:30 em UTC. O bucket fica em
-13/10, hora 23:
-
-```js
-db.trecho_bucket_diario.find(
-  { destino: "POSTO-0007", tipoVeiculo: "CARRETA" },
-  { _id: 0, dataLocal: 1, hora: 1, dowCivil: 1, n: 1, somaMin: 1 }
+db.trecho_media_dow_hora.find(
+  { origem: "BASE-001", destino: "POSTO-11", tipoVeiculo: "CARRETA",
+    dow: 5, hora: { $in: [12, 13, 14, 15, 16, 17] } },
+  { _id: 0, dow: 1, hora: 1, n: 1, mediaMin: 1, mediaKm: 1 }
 ).sort({ hora: 1 })
 ```
 ```text
 [
-  { somaMin: 30, n: 1, dataLocal: ISODate('2026-10-13T03:00:00.000Z'), hora: 7, dowCivil: 3 },
-  { somaMin: 25, n: 1, dataLocal: ISODate('2026-10-13T03:00:00.000Z'), hora: 14, dowCivil: 3 },
-  { somaMin: 18, n: 1, dataLocal: ISODate('2026-10-13T03:00:00.000Z'), hora: 23, dowCivil: 3 }
+  { n: 26, dow: 5, hora: 12, mediaMin: 89.16538461538462, mediaKm: 54.62346153846154 },
+  { n: 26, dow: 5, hora: 13, mediaMin: 83.91576923076923, mediaKm: 54.94653846153846 },
+  { n: 26, dow: 5, hora: 14, mediaMin: 90.1573076923077, mediaKm: 54.5226923076923 },
+  { n: 26, dow: 5, hora: 15, mediaMin: 88.31884615384615, mediaKm: 54.58153846153846 },
+  { n: 26, dow: 5, hora: 16, mediaMin: 87.75500000000001, mediaKm: 54.905 },
+  { n: 78, dow: 5, hora: 17, mediaMin: 110.6278205128205, mediaKm: 54.44858974358974 }
 ]
 ```
 
-`dataLocal` é 00:00 do dia em São Paulo guardado como instante UTC (03:00Z).
-
-## 5. Validator recusa data como string
+`dow` segue o `$isoDayOfWeek`: 5 = sexta. A hora 17 tem mais amostras e é mais lenta (pico
+da tarde no gerador). Um trecho × veículo tem no máximo 168 documentos (7 × 24):
 
 ```js
-db.trecho_observacoes.insertOne({ origem: "BASE-001", destino: "POSTO-0042",
-  tipoVeiculo: "BITREM", veiculoId: "V", viagemId: "X", seq: 1,
-  observadoEm: "2026-10-15T20:00:00-03:00", ingeridoEm: new Date(),
-  distanciaKm: 39, tempoMin: 50 })
+db.trecho_media_dow_hora.countDocuments({ origem: "BASE-001", destino: "POSTO-11", tipoVeiculo: "CARRETA" })  // 168
+```
+
+## 2. O cenário: somar os documentos prontos
+
+É o que o passo 4 executa (`docs/pipelines/cenario-base-pronta.js`):
+
+```js
+db.trecho_media_dow_hora.aggregate([
+  { $match: { origem: "BASE-001", destino: "POSTO-11", tipoVeiculo: "CARRETA",
+              dow: { $in: [5] }, hora: { $in: [12, 13, 14, 15, 16, 17] } } },
+  { $group: { _id: null, n: { $sum: "$n" }, somaMin: { $sum: "$somaMin" },
+              somaQuadMin: { $sum: "$somaQuadMin" }, somaKm: { $sum: "$somaKm" },
+              docs: { $sum: 1 } } }
+])
 ```
 ```text
-121 Document failed validation
+[ { _id: null, n: 208, somaMin: 20051.09, somaQuadMin: 2027706.9007, somaKm: 11360.05, docs: 6 } ]
 ```
 
-## 6. Índices e TTL lidos do banco
+Média = 20051,09 / 208 = **96,4 min**; desvio = √(2027706,9007 / 208 − 96,4²) ≈ **21,3
+min**; km = 11360,05 / 208 ≈ **54,6 km** — os números da tela do passo 4.
+
+## 3. Explain do cenário
 
 ```js
-db.trecho_bucket_diario.getIndexes().map(i => [i.name, i.unique || false, i.expireAfterSeconds])
+const e = db.trecho_media_dow_hora.explain("executionStats").aggregate([ /* o pipeline acima */ ]);
+```
+```text
+GROUP ← FETCH ← IXSCAN chave_unica · totalKeysExamined: 6 · totalDocsExamined: 6
+```
+
+Seis chaves e seis documentos, independentemente de quantas observações o trecho tem.
+
+## 4. Mesmo cenário em outro período, direto na raw
+
+Sextas à tarde de 2026-09-21 a 2026-10-18 (o passo 5, sem persistir):
+
+```js
+db.trecho_observacoes.aggregate([
+  { $match: { origem: "BASE-001", destino: "POSTO-11", tipoVeiculo: "CARRETA",
+              observadoEm: { $gte: ISODate("2026-09-21T03:00:00Z"), $lt: ISODate("2026-10-19T03:00:00Z") } } },
+  { $set: { dow: { $isoDayOfWeek: { date: "$observadoEm", timezone: "America/Sao_Paulo" } },
+            hora: { $hour: { date: "$observadoEm", timezone: "America/Sao_Paulo" } } } },
+  { $match: { dow: { $in: [5] }, hora: { $in: [12, 13, 14, 15, 16, 17] } } },
+  { $group: { _id: null, n: { $sum: 1 }, somaMin: { $sum: "$tempoMin" },
+              somaQuadMin: { $sum: { $multiply: ["$tempoMin", "$tempoMin"] } },
+              somaKm: { $sum: "$distanciaKm" } } },
+  { $project: { _id: 0, n: 1, somaMin: { $round: ["$somaMin", 6] },
+                somaQuadMin: { $round: ["$somaQuadMin", 6] }, somaKm: { $round: ["$somaKm", 6] } } }
+])
+```
+```text
+[ { n: 32, somaMin: 3244.23, somaQuadMin: 362166.8369, somaKm: 1743.93 } ]
+```
+
+Média ≈ 101,4 min em 32 amostras. Com "persistir", o pipeline ganha um `$merge` em
+`consultas_salvas` no fim (`docs/pipelines/cenario-raw-salvo.js`).
+
+## 5. Hoje fica fora
+
+```js
+db.trecho_observacoes.countDocuments({ observadoEm: { $gte: ISODate("2026-10-19T03:00:00Z") } })  // 902
+db.trecho_media_dow_hora.countDocuments({ janelaFim: { $ne: ISODate("2026-10-19T03:00:00Z") } })  // 0
+```
+
+A raw já tem 902 observações de hoje; nenhum documento da base usa outro fim de janela.
+
+## 6. Índices e TTL
+
+```js
+db.trecho_observacoes.getIndexes()
 ```
 ```text
 [
-  [ '_id_', false, undefined ],
-  [ 'chave_bucket_unica', true, undefined ],
-  [ 'dataLocal_1_ttl', false, 16416000 ]   // 190 dias
+  { name: '_id_', key: { _id: 1 } },
+  { name: 'viagemId_1_seq_1', key: { viagemId: 1, seq: 1 }, unique: true },
+  { name: 'origem_1_destino_1_tipoVeiculo_1_observadoEm_1',
+    key: { origem: 1, destino: 1, tipoVeiculo: 1, observadoEm: 1 } },
+  { name: 'observadoEm_1_ttl', key: { observadoEm: 1 }, expireAfterSeconds: 17280000 }
 ]
 ```
 
-## 7. Último run do job
+`17280000` s = 200 dias.
 
 ```js
-db.job_runs.find({}, { _id: 0, runId: 1, asOf: 1, status: 1, "stats.camada1.modo": 1,
-  "stats.camada1.lidos": 1, "stats.camada2.inseridos": 1 }).sort({ iniciadoEm: -1 }).limit(1)
-```
-```text
-[ { runId: '2026-10-16T20:53:21Z-8558', asOf: '2026-10-16', status: 'ok',
-    stats: { camada1: { modo: 'carga_inicial', lidos: 11 }, camada2: { inseridos: 9 } } } ]
+db.trecho_media_dow_hora.getIndexes()   // _id_ e chave_unica {origem, destino, tipoVeiculo, dow, hora} unique
+db.consultas_salvas.getIndexes()        // _id_ e expiraEm_ttl {expiraEm: 1}, expireAfterSeconds: 0
 ```
 
-(`lidos: 11` = observações dentro da janela: 14 no dataset menos as 3 marcadas com 999.)
+## 7. Última execução do job
+
+```js
+db.job_runs.find({}, { _id: 0, origem: 1, dataRef: 1, status: 1, lidos: 1, gravados: 1, removidos: 1, ms: 1 })
+  .sort({ iniciadoEm: -1 }).limit(1)
+```
+```text
+[ { origem: 'reset', dataRef: '2026-10-19', status: 'ok', lidos: 312164, gravados: 8834, removidos: 0, ms: 5808.1 } ]
+```
+
+312.164 observações da janela viraram 8.834 documentos prontos em ~5,8 s (Atlas).

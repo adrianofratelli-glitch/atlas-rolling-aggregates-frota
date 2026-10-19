@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.0.0 (2026-10-19)
+
+**Breaking: new API and new schema.** The v1 routes (`/api/eta`, `/api/comparar`,
+`/api/comparar-modos`, `/api/config`, `/api/avancar`, `/api/atrasado`, `/api/buckets`,
+`/api/capo`…) and collections (`trecho_media_historica`, `trecho_bucket_*`, `config`,
+`config_versoes`, `ingestao_pendente`, `job_locks`, `veiculos`, `tipos_veiculo`) are gone.
+Recreate the database with `make seed` (or "Resetar demo").
+
+- One-page UI with a guided 7-step script (raw and schema, the rule, build the base, query
+  scenarios, outside the base, when it refreshes, few samples) and a
+  "Ver query / chamada executada" drawer on every step that runs something.
+- The materialized base is now `trecho_media_dow_hora`: origin × destination × vehicle
+  type × ISO day of week (`$isoDayOfWeek`, 1 = Monday) × hour, built daily with `$merge`
+  replace. Any combination of days and hour range is a sum of ready documents; mean and
+  standard deviation from count, sum and sum of squares.
+- Other periods (specific dates, last N days) are computed on the raw collection, with
+  optional persistence in `consultas_salvas` (TTL; 1–30 days or until the next job).
+- Widening when there are fewer than 5 samples, labelled as a rule to validate.
+- `dataRef` (reference date) replaces the simulated `asOf`: the seed generates data around
+  the real date; "Resetar demo" rebuilds it around the click and queues 14 days of
+  simulated arrivals in `ingestao_simulada`.
+- Job cleanup by the server clock (`hello.localTime`): overlapping runs never delete each
+  other's output; no lease.
+- Atlas Scheduled Triggers (daily job at 03:10 São Paulo, hourly simulated ingestion) in
+  `atlas-trigger/`, generated from the Python pipelines and tested in Node. Not deployed
+  in the demo.
+- Removed: incremental design, buckets, watermark, versioned config, night rule, simulated
+  clock, raw-vs-materialized `explain` tab, benchmark profile `escala`.
+- The data model is presented as a reference model to adapt to the real master data.
+- 87 tests on Atlas (9.0.4) and local MongoDB 8.0.34.
+
 ## 1.0.1 (2026-10-16)
 
 - The API no longer exposes the job owner (`host:pid`) and masks server `host:port` in driver error messages (`job_runs`, `/api/estado`, 503 details). Found while recording the offline replica: a real `AutoReconnect` on Atlas carried the cluster hostname.

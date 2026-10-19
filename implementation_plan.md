@@ -1,23 +1,31 @@
 # Plano de implementação
 
-Estado em 2026-10-16. Versão 1.0.1 (repo privado, releases v1.0.0 e v1.0.1; empacotada no Demo Player 0.7.0).
+Estado em 2026-10-19. Versão 2.0.0 na branch `feat/v2-simplificacao` (ainda não publicada).
+A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0.0/v1.0.1.
 
-## Concluído
+## Concluído (v2.0.0)
 
-1. Infra: `docker-compose.yml` (MongoDB 8.0 replica set de 1 nó, porta 27027), `.env`, `Makefile`, `start.sh` no contrato do launcher do portfólio.
-2. Bootstrap idempotente: 11 collections com `$jsonSchema` strict, índices e TTLs (`scripts/bootstrap_db.py`).
-3. Fixtures do contrato 14.1 + testes da camada 1.
-4. Camada 2 (dois modos de limpeza) e consulta de fallback com hierarquia.
-5. Job com lease, retry com backoff, watermark de atrasos e retomada segura.
-6. Gerador determinístico (`small`, `escala`, `teste`), relógio simulado com `ingestao_pendente`, `advance`.
-7. API FastAPI + UI Vite/React (5 abas + "Por baixo do capô"), badges derivados.
-8. Benchmark `escala` (local e Atlas) e documentação.
-9. Validação no Atlas M30 (MongoDB 9.0.4): 90 testes, bateria de resiliência (35 casos), caos real no Docker, jornada de UI.
-10. Registro no portal (`povs.json`) e reserva de portas 5410/8410 (+27027).
-11. Desenho simples (raw → média com `$out`) como default; incremental por turno ou hora como opção; mesmo agregado nos três (testado); aba Simples × Incremental.
-12. README em inglês com prints reais do Atlas; visão técnica em `docs/visao-tecnica.md`.
+1. Schema v2 com `$jsonSchema` strict em todas as collections e bootstrap idempotente que
+   remove índices fora do contrato; código e collections do desenho incremental apagados.
+2. Calendário puro (`frota/janela.py`): janela semiaberta, faixas de hora, próximo job,
+   períodos; `dataRef`/`agora` sempre por parâmetro.
+3. Gerador com padrões por dia/hora/veículo e trechos esparsos; reset pela data do clique
+   com 14 dias de chegadas simuladas.
+4. Job diário dow × hora com `$merge` replace e limpeza pelo relógio do servidor.
+5. Bloco `query` com operadores explicados em toda resposta.
+6. Cenários na base pronta (com ampliação) e sob demanda na raw, com persistência TTL.
+7. Ingestão simulada de hora em hora e prévia do próximo job.
+8. Atlas Scheduled Triggers em `atlas-trigger/` (Functions geradas e testadas no node).
+9. API v2 e UI de uma página com roteiro de 7 passos (Dark Stage v4, 360/768/1440 px).
+10. Limpeza dos bancos antigos (Atlas e local) e alvos do Makefile.
+11. Docs públicas, prints do Atlas real, portfólio e grafo.
+
+87 testes no Atlas (9.0.4) e no MongoDB 8.0.34 local.
 
 ## Não feito / próximos passos
 
-- Réplica gravada para o `pov-demo-player`.
-- Camada 2 incremental (somar dia que entra, subtrair o que sai) se o volume de buckets crescer.
+- Implantar os triggers (`make trigger-deploy`) com uma chave que tenha Project Owner no
+  projeto do cluster. Até lá, resetar a demo na manhã da apresentação.
+- Regravar a réplica `rolling` do `pov-demo-player` (a atual é da API 1.0.1).
+- Limitar `expiraEm` ao próximo job quando um período absoluto salvo inclui dias recentes.
+- Publicar a branch e a release 2.0.0 depois do teste do usuário.
