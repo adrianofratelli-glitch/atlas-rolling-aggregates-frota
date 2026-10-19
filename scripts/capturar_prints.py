@@ -32,6 +32,7 @@ def ir(pg, n: int) -> None:
 
 
 def foto(pg, nome: str) -> None:
+    pg.evaluate("() => { window.scrollTo(0, 0); document.querySelectorAll('*').forEach(e => { if (e.scrollTop) e.scrollTop = 0; }); }")
     pg.wait_for_timeout(600)
     alvo = pg.locator(".chip-alvo")
     if alvo.count() == 0 or "Atlas" not in alvo.inner_text():
