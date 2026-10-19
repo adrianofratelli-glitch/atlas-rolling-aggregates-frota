@@ -47,7 +47,7 @@ def guardar_escrita(nome: str, permitir: bool = False) -> str:
     """Recusa operações destrutivas (drop, seed) fora de `*_test`/`*_fixtures`.
 
     O banco da demo só é recriado com `ALLOW_DEMO_DB_WRITE=1` — o Makefile passa a
-    variável nos alvos que existem justamente para isso (`make seed`, `make reset`).
+    variável nos alvos que existem justamente para isso (`make seed`).
     """
     if nome.endswith("_test") or nome.endswith("_fixtures"):
         return nome

@@ -10,7 +10,13 @@ from frota import settings
 from frota.db import client, get_db
 from frota.schemas import VALIDATORS
 
-PREFIXO = "frota_eta"
+DEMO = "frota_eta"  # literal: nunca é dropado, independente de env
+
+
+def selecionar_bancos(nomes: list[str]) -> list[str]:
+    """Allowlist exata: frota_eta_bench e frota_eta_*_test. A demo nunca entra."""
+    return sorted(n for n in nomes if n != DEMO and (
+        n == "frota_eta_bench" or (n.startswith("frota_eta_") and n.endswith("_test"))))
 
 
 def main() -> int:
@@ -18,18 +24,14 @@ def main() -> int:
     ap.add_argument("--confirmar", action="store_true", help="executa o drop (padrão: só lista)")
     a = ap.parse_args()
     c = client()
-    alvo_bancos = sorted(n for n in c.list_database_names()
-                         if n.startswith(PREFIXO) and n != settings.MONGODB_DB
-                         and (n == "frota_eta_bench" or n.endswith("_test")
-                              or n.startswith("frota_eta_") ))
+    alvo_bancos = selecionar_bancos(c.list_database_names())
     sobras = []
-    db = get_db(settings.MONGODB_DB)
+    db = get_db(DEMO)
     for nome in sorted(db.list_collection_names()):
         if nome not in VALIDATORS and not nome.startswith("system."):
             sobras.append((nome, db[nome].estimated_document_count()))
     print(f"alvo: {settings.ALVO} | {'EXECUTANDO' if a.confirmar else 'dry-run'}")
     for n in alvo_bancos:
-        assert n.startswith(PREFIXO)
         d = c[n]
         cols = {k: d[k].estimated_document_count() for k in d.list_collection_names()}
         print(f"banco {n}: {cols}")
@@ -37,7 +39,7 @@ def main() -> int:
             c.drop_database(n)
             print(f"  dropado {n}")
     for nome, n in sobras:
-        print(f"{settings.MONGODB_DB}.{nome}: {n} docs (fora do schema v2)")
+        print(f"{DEMO}.{nome}: {n} docs (fora do schema v2)")
         if a.confirmar:
             db.drop_collection(nome)
             print(f"  dropada {nome}")
