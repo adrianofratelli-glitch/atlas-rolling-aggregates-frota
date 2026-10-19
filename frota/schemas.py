@@ -36,6 +36,7 @@ VALIDATORS: dict[str, dict] = {
     "trechos": _obj(["_id", "origem", "destino", "distanciaBaseKm", "tempoBaseMin"], {
         "_id": COD, "origem": COD, "destino": COD,
         "distanciaBaseKm": NUM_POS, "tempoBaseMin": NUM_POS,
+        "esparso": {"bsonType": "bool"},
     }),
     "trecho_observacoes": _obj(_OBS_REQ, _OBS_PROPS),
     "ingestao_simulada": _obj(_OBS_REQ, _OBS_PROPS),
