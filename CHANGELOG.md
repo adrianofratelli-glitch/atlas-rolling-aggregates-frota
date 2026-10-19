@@ -8,14 +8,16 @@
   the "outside the base" branch through `consultas_salvas`. Each step lights its part; lit
   nodes get a green border and a ✓ circle (shape, not only colour). Three drawings chosen by
   container width (horizontal, medium, vertical), no horizontal overflow at 360/768/1440 px;
-  `role="img"` with a description of the flow and of what is lit.
-- Step 3: "Rodar job agora" plays a single 1.4 s animation of dots going from the raw to the
-  ready base and then shows the run's real numbers on the nodes (read → written). With
+  `role="img"` with a description of the flow and of what is lit or half-lit.
+- Step 3: while the "Rodar job agora" request is in flight, dots loop (1.4 s cycles) from the
+  raw to the ready base; when the response arrives they stop and the run's real numbers show
+  on the nodes (read → written). On error the dots stop and no numbers appear. With
   `prefers-reduced-motion`, only the numbers change.
 - Step 4: the map lights the branch the number came from, read from a new `origem` field in
   `/api/cenario` (`base` | `raw` | `salvo`): base → ETA; raw → `consultas_salvas` → ETA when
-  computed and saved; the same path with `consultas_salvas` half-lit when computed but not
-  saved; only `consultas_salvas` → ETA when read from the saved result. Both branches are
+  computed and saved; raw and ETA lit with the `$merge` arrows and `consultas_salvas`
+  half-lit when computed but not saved (nothing was written); only the raw half-lit when the
+  period has no raw data (nothing ran); only `consultas_salvas` → ETA when read from the saved result. Both branches are
   half-lit before the first answer.
 - Step 1 drawer: new section "Como a ingestão grava (exemplo)" with the ingestion pipeline
   (`$match` → `$project` → `$merge` on `viagemId, seq`). `GET /api/raw` returns it as

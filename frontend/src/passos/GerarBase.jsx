@@ -11,11 +11,10 @@ export default function GerarBase({ estado, onMudou }) {
   const [run, setRun] = useState(null)
   const [rodando, setRodando] = useState(false)
   const [erro, setErro] = useState('')
-  const [disparos, setDisparos] = useState(0)
   const ultimo = estado.ultimoJob
 
   const rodar = async () => {
-    setRodando(true); setErro(''); setDisparos((n) => n + 1)
+    setRodando(true); setErro('')
     try {
       setRun(await post('/api/job'))
       onMudou()
@@ -28,7 +27,7 @@ export default function GerarBase({ estado, onMudou }) {
 
   return (
     <>
-      <MapaFluxo ativo={ATIVO} horario={estado.trigger.horarioLocal} animar={disparos}
+      <MapaFluxo ativo={ATIVO} horario={estado.trigger.horarioLocal} animar={rodando}
         numeros={run && !rodando ? { raw: run.lidos, base: run.gravados } : null} />
       <div className="acao">
         <button type="button" className="primario" onClick={rodar} disabled={rodando} aria-busy={rodando}>

@@ -4,8 +4,8 @@ import { int } from '../fmt.js'
 // Mapa do fluxo no topo de cada passo: SVG inline, sem biblioteca. Três desenhos fixos
 // (horizontal, médio e vertical) escolhidos pela largura do contêiner, para o texto nunca
 // ficar abaixo de ~11 px efetivos nem estourar a largura. `ativo` acende nós e setas pelo id;
-// `parcial` deixa em opacidade média; `animar` (contador) dispara uma vez os pontos andando
-// da raw para a base; `numeros` ({raw, base}) aparece quando a animação termina.
+// `parcial` deixa em opacidade média; enquanto `animar` for verdadeiro (o job em execução),
+// os pontos andam da raw para a base em ciclos; `numeros` ({raw, base}) aparece quando para.
 
 const NOS = {
   rastreio: { titulo: 'Rastreio da frota', sub: ['GPS / TMS — na demo:', 'gerador'] },
@@ -114,7 +114,7 @@ function Rotulo({ r, fs }) {
   )
 }
 
-export default function MapaFluxo({ ativo = [], parcial = [], numeros, animar = 0, horario, destaqueHorario = false }) {
+export default function MapaFluxo({ ativo = [], parcial = [], numeros, animar = false, horario, destaqueHorario = false }) {
   const caixa = useRef(null)
   const [tipo, setTipo] = useState('h')
   const [anim, setAnim] = useState(null)
@@ -137,10 +137,9 @@ export default function MapaFluxo({ ativo = [], parcial = [], numeros, animar = 
     if (!animar || reduzido()) return undefined
     let id
     const ini = performance.now()
+    // ciclos de DUR ms até a resposta chegar (animar vira falso) ou dar erro
     const quadro = (agora) => {
-      const e = agora - ini
-      if (e >= DUR) { setAnim(null); return }
-      setAnim(e)
+      setAnim((agora - ini) % DUR)
       id = requestAnimationFrame(quadro)
     }
     setAnim(0)
@@ -156,10 +155,12 @@ export default function MapaFluxo({ ativo = [], parcial = [], numeros, animar = 
   const hor = horario || '03:10'
 
   const acesos = Object.keys(NOS).filter((n) => on.has(n)).map((n) => NOME[n])
+  const parciais = Object.keys(NOS).filter((n) => !on.has(n) && meio.has(n)).map((n) => NOME[n])
   const rotuloAria = 'Mapa do fluxo: o rastreio da frota grava cada viagem em trecho_observacoes, com nomes e pares '
     + `validados pelo cadastro de pontos e trechos; o job das ${hor} lê a raw e grava com $merge em `
     + 'trecho_media_dow_hora; o ETA de fallback lê a base pronta ou, fora da base, calcula na raw e guarda em '
     + `consultas_salvas.${acesos.length ? ` Em destaque neste passo: ${acesos.join(', ')}.` : ''}`
+    + (parciais.length ? ` Parcialmente: ${parciais.join(', ')}.` : '')
     + (mostrarNum ? ` Última execução: ${int(numeros.raw)} observações lidas, ${int(numeros.base)} médias gravadas.` : '')
 
   // trajeto dos pontos: sai da raw, atravessa o job e entra na base

@@ -7,7 +7,7 @@ no trilho "base gerada em …" com a data de hoje. Suba com `./start.sh` (ou `ma
 `make ui`) e abra http://127.0.0.1:5410.
 
 No topo de cada passo, o **mapa do fluxo** acende o trecho daquele passo: use-o para dizer
-onde se está ("agora estamos aqui: a raw entra no job"). No passo 3 ele anima a raw indo
+onde se está ("agora estamos aqui: a raw entra no job"). No passo 3, enquanto o job roda, ele anima a raw indo
 para a base e mostra lidas → gravadas; no passo 4 acende o ramo do selo.
 
 | min | Passo | O que fazer | O que dizer |

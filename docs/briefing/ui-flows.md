@@ -17,14 +17,14 @@ horário vem de `/api/estado.trigger.horarioLocal`. Cada passo acende o seu trec
 fica apagado. Aceso = borda verde **e** um círculo com ✓ na borda do nó; parcial = borda
 tracejada e só o anel. Três desenhos pela largura do contêiner (horizontal ≥ 940 px, médio
 ≥ 480 px, vertical abaixo), texto a ~11 px efetivos ou mais; `role="img"` com `aria-label`
-que descreve o fluxo, o que está aceso e os números.
+que descreve o fluxo, o que está aceso, o que está parcial e os números.
 
 | Passo | Acende |
 |---|---|
 | 1 | Rastreio, `pontos · trechos`, `trecho_observacoes` |
 | 2 | `trecho_observacoes` → Job |
-| 3 | `trecho_observacoes` → Job → `$merge` → `trecho_media_dow_hora`. "Rodar job agora" dispara uma vez (1,4 s) pontos andando da raw para a base; ao fim, mostra nos nós os números da execução (`lidos` → "N lidas", `gravados` → "N gravadas"). Com `prefers-reduced-motion`, só os números. |
-| 4 | Pelo campo `origem` da resposta: `base` → `trecho_media_dow_hora` → ETA; `raw` gravado (`expiraEm`) → `trecho_observacoes` → `consultas_salvas` → ETA; `raw` sem gravar → o mesmo caminho, com `consultas_salvas` parcial (nada foi escrito); `salvo` ("lido do salvo") → só `consultas_salvas` → ETA. Antes da primeira resposta, os dois ramos em opacidade média. |
+| 3 | `trecho_observacoes` → Job → `$merge` → `trecho_media_dow_hora`. "Rodar job agora": enquanto a chamada ao job está em andamento, pontos andam da raw para a base em ciclos de 1,4 s; quando a resposta chega, param e o mapa mostra nos nós os números da execução (`lidos` → "N lidas", `gravados` → "N gravadas"). Erro: os pontos param e não há números. Com `prefers-reduced-motion`, só os números. |
+| 4 | Pelo campo `origem` da resposta: `base` → `trecho_media_dow_hora` → ETA; `raw` gravado (`expiraEm`) → `trecho_observacoes` → `consultas_salvas` → ETA; `raw` sem gravar → `trecho_observacoes` e ETA acesos, com as setas do `$merge` e `consultas_salvas` parciais (nada foi escrito); `raw` sem resultado ("sem dados brutos para esse período": nada rodou) → só `trecho_observacoes` parcial; `salvo` ("lido do salvo") → só `consultas_salvas` → ETA. Antes da primeira resposta, os dois ramos em opacidade média. |
 | 5 | Job, com o horário em destaque |
 
 | # | Passo | Ação | Rota | Resultado exibido |

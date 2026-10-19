@@ -224,8 +224,8 @@ progress { width: 100%; height: 6px; accent-color: var(--accent); }
 .mapa-fluxo svg { display: block; width: 100%; height: auto; overflow: visible; }
 .mf-no rect { fill: var(--bg-card); stroke: var(--border-subtle); stroke-width: 1.2; }
 .mf-no, .mf-seta { transition: opacity .2s var(--ease); }
-.mf-no.off, .mf-seta.off { opacity: .36; }
-.mf-no.meio, .mf-seta.meio { opacity: .62; }
+.mf-no.off, .mf-seta.off { opacity: .5; }
+.mf-no.meio, .mf-seta.meio { opacity: .78; }
 .mf-no.meio rect { stroke-dasharray: 4 3; stroke: var(--text-muted); }
 .mf-no.on rect { stroke: var(--accent); stroke-width: 1.8; fill: rgba(0, 237, 100, .07); }
 .mf-titulo { fill: var(--text-pri); font-weight: 600; }

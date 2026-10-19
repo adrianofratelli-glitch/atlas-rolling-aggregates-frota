@@ -9,14 +9,16 @@ import MapaFluxo from '../comp/MapaFluxo.jsx'
 const RAMO_BASE = ['base', 'eta', 'e-base-eta']
 const RAMO_RAW = ['raw', 'salvas', 'eta', 'e-raw-salvas', 'e-salvas-eta']
 // Ramo aceso conforme `origem` da resposta: base pronta; lido do salvo (só salvas → ETA);
-// calculado na raw e gravado (ramo inteiro); calculado sem gravar (consultas_salvas fica
-// parcial, nada foi escrito). Antes da primeira resposta, os dois ramos em opacidade média.
+// calculado na raw e gravado (ramo inteiro); calculado sem gravar (raw → ETA, e o caminho do
+// $merge e consultas_salvas parciais: nada foi escrito); sem dado bruto no período (nada rodou:
+// só a raw parcial). Antes da primeira resposta, os dois ramos em opacidade média.
 function ramos(r) {
   if (!r) return { parcial: [...RAMO_BASE, ...RAMO_RAW] }
   if (r.origem === 'base' || r.selo === 'job_diario') return { ativo: RAMO_BASE }
   if (r.origem === 'salvo') return { ativo: ['salvas', 'eta', 'e-salvas-eta'] }
+  if (!r.resultado) return { parcial: ['raw'] }
   if (r.expiraEm) return { ativo: RAMO_RAW }
-  return { ativo: ['raw', 'eta', 'e-raw-salvas', 'e-salvas-eta'], parcial: ['salvas'] }
+  return { ativo: ['raw', 'eta'], parcial: ['salvas', 'e-raw-salvas', 'e-salvas-eta'] }
 }
 
 // O detalhe da API já descreve o nível usado ("poucas amostras: ampliado para …",
