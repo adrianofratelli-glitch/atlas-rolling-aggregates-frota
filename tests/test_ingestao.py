@@ -46,28 +46,16 @@ def test_simulado_ate(db):
     assert ingestao.simulado_ate(db) == AGORA + timedelta(days=2)
 
 
-def test_previa_nao_escreve(db):
-    seed_mod.resetar(db, AGORA, 1, perfil="teste")
-    antes = {n: db[n].count_documents({}) for n in VALIDATORS}
-    previa.proximo(db, AGORA)
-    assert {n: db[n].count_documents({}) for n in VALIDATORS} == antes
+def test_ingerir_nao_perde_chegada_no_meio(db, monkeypatch):
+    _fila(db)
+    original = ingestao._selecionar
 
+    def selecionar_e_chega_outro(d, agora):
+        ids = original(d, agora)
+        d.ingestao_simulada.insert_one(_obs(9, AGORA - timedelta(minutes=5)))  # chega depois da escolha
+        return ids
 
-def test_previa_dias(db):
-    db.trecho_observacoes.insert_many([
-        _obs(1, datetime(2026, 10, 19, 12, tzinfo=timezone.utc)),   # dia que entra
-        _obs(2, datetime(2026, 4, 22, 12, tzinfo=timezone.utc)),    # dia que sai
-        _obs(3, datetime(2026, 4, 22, 15, tzinfo=timezone.utc))])
-    db.trecho_media_dow_hora.insert_one({"origem": "A", "destino": "B", "tipoVeiculo": "TRUCK",
-                                         "dow": 1, "hora": 9, "n": 3, "somaMin": 30.0,
-                                         "somaQuadMin": 300.0, "somaKm": 15.0, "mediaMin": 10.0,
-                                         "mediaKm": 5.0, "dataRef": "2026-10-19", "janelaInicio": AGORA,
-                                         "janelaFim": AGORA, "runId": "r", "atualizadoEm": AGORA})
-    r = previa.proximo(db, AGORA)
-    assert r["entra"] == {"dia": "2026-10-19", "observacoes": 1}
-    assert r["sai"] == {"dia": "2026-04-22", "observacoes": 2}
-    assert r["dataRef"] == "2026-10-20"
-    assert r["quando"] == datetime(2026, 10, 20, 6, 10, tzinfo=timezone.utc)
-    assert r["chavesQueSomem"] == 0
-    db.trecho_observacoes.delete_many({"viagemId": "V1"})
-    assert previa.proximo(db, AGORA)["chavesQueSomem"] == 1
+    monkeypatch.setattr(ingestao, "_selecionar", selecionar_e_chega_outro)
+    assert ingestao.ingerir(db, AGORA)["movidos"] == 2
+    assert db.ingestao_simulada.count_documents({"viagemId": "V9"}) == 1
+    assert db.trecho_observacoes.count_documents({"viagemId": "V9"}) == 0

@@ -14,10 +14,16 @@ DESTINO = "trecho_observacoes"
 CHAVE = ["viagemId", "seq"]
 
 
-def pipeline(agora: datetime) -> list[Estagio]:
+def pipeline(agora: datetime, ids: list | None = None) -> list[Estagio]:
+    """Com `ids`, move exatamente esses documentos (evita perder os que chegam durante a execução)."""
+    if ids is None:
+        match = Estagio("Pega da fila só as observações cujo horário já passou.",
+                        {"$match": {"observadoEm": {"$lt": agora}}})
+    else:
+        match = Estagio("Pega da fila só as observações já escolhidas (as de horário já passado).",
+                        {"$match": {"_id": {"$in": ids}}})
     return [
-        Estagio("Pega da fila só as observações cujo horário já passou.",
-                {"$match": {"observadoEm": {"$lt": agora}}}),
+        match,
         Estagio("Tira o _id para que cada documento ganhe um novo na collection de destino.",
                 {"$project": {"_id": 0}}),
         Estagio("Grava na collection de observações; se a mesma viagem e trecho já estiverem lá, "

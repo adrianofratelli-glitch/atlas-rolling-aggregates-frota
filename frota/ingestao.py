@@ -24,11 +24,16 @@ def bloco(agora: datetime) -> dict:
     return bloco_query(pipe.ORIGEM, comentados(pipe.pipeline(agora)), [pipe.ORIGEM], [pipe.DESTINO])
 
 
+def _selecionar(db: Database, agora: datetime) -> list:
+    return [d["_id"] for d in db[pipe.ORIGEM].find({"observadoEm": {"$lt": agora}}, {"_id": 1})]
+
+
 def ingerir(db: Database, agora: datetime) -> dict:
-    filtro = {"observadoEm": {"$lt": agora}}
-    movidos = db[pipe.ORIGEM].count_documents(filtro)
-    if movidos:
-        list(db[pipe.ORIGEM].aggregate(estagios(pipe.pipeline(agora))))
-        db[pipe.ORIGEM].delete_many(filtro)
-    return {"movidos": movidos, "restantes": db[pipe.ORIGEM].count_documents({}),
+    """Escolhe os `_id`s a mover, faz o `$merge` só deles e apaga só eles da fila:
+    o que chegar na fila no meio do caminho não é perdido."""
+    ids = _selecionar(db, agora)
+    if ids:
+        list(db[pipe.ORIGEM].aggregate(estagios(pipe.pipeline(agora, ids))))
+        db[pipe.ORIGEM].delete_many({"_id": {"$in": ids}})
+    return {"movidos": len(ids), "restantes": db[pipe.ORIGEM].count_documents({}),
             "simuladoAte": simulado_ate(db)}
