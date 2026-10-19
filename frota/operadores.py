@@ -18,6 +18,7 @@ EXPLICACOES: dict[str, str] = {
     "$or": "aceita o documento se pelo menos uma das condições for verdadeira.",
     "$lt": "menor que (o limite em si fica de fora).",
     "$gte": "maior ou igual a (o limite em si entra).",
+    "$gt": "maior que (o limite em si fica de fora).",
     "$multiply": "multiplica os números.",
     "$literal": "usa o valor exatamente como está, sem interpretar como campo.",
 }
