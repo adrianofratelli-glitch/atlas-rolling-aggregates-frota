@@ -30,15 +30,7 @@ UTC = timezone.utc
 LOCK_ID = "materializacao"
 
 
-import re as _re
-
-# host:porta de servidores em mensagens de erro de driver: não saem do processo
-_HOST = _re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*\.(?:mongodb\.net|mongo\.cosmos\.azure\.com|internal)(?::\d+)?"
-                    r"|\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?")
-
-
-def mascarar(texto: str) -> str:
-    return _HOST.sub("<host>", texto)
+from .db import mascarar  # noqa: E402
 
 
 class LockOcupado(RuntimeError):

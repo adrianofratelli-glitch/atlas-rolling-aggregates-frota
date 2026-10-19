@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import timezone
 
 from bson.codec_options import CodecOptions
@@ -29,11 +30,20 @@ def get_db(nome: str | None = None) -> Database:
     return client().get_database(nome or settings.MONGODB_DB, codec_options=CODEC)
 
 
+# host:porta de servidores em mensagens de erro de driver: não saem do processo
+_HOST = re.compile(r"[A-Za-z0-9][A-Za-z0-9.-]*\.(?:mongodb\.net|mongo\.cosmos\.azure\.com|internal)(?::\d+)?"
+                   r"|\b(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?")
+
+
+def mascarar(texto: str) -> str:
+    return _HOST.sub("<host>", texto)
+
+
 class EscritaRecusada(SystemExit):
     """Escrita destrutiva no banco da demo sem autorização explícita."""
 
 
-def guardar_escrita(nome: str) -> str:
+def guardar_escrita(nome: str, permitir: bool = False) -> str:
     """Recusa operações destrutivas (drop, seed) fora de `*_test`/`*_fixtures`.
 
     O banco da demo só é recriado com `ALLOW_DEMO_DB_WRITE=1` — o Makefile passa a
@@ -41,7 +51,7 @@ def guardar_escrita(nome: str) -> str:
     """
     if nome.endswith("_test") or nome.endswith("_fixtures"):
         return nome
-    if os.getenv("ALLOW_DEMO_DB_WRITE") == "1":
+    if permitir or os.getenv("ALLOW_DEMO_DB_WRITE") == "1":
         return nome
     raise EscritaRecusada(
         f"recusado: '{nome}' não é banco *_test/*_fixtures. "
