@@ -161,18 +161,18 @@ host, port or URI.
 
 ## Tests
 
-The same 87 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
+The same 96 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
 portfolio cluster) and **local Docker 8.0.34**.
 
 | File | Covers |
 |---|---|
 | `test_janela.py` | half-open window, today excluded, `$lt`, São Paulo time including a 2018 DST date, hour ranges across midnight, periods, next job |
 | `test_job.py` | today excluded, job idempotent, two overlapping runs lose nothing, a key that left the window is removed, `$isoDayOfWeek` at local midnight, rounding, masked errors in `job_runs` |
-| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, absolute vs relative validity, period without raw data |
+| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, absolute vs relative validity (an absolute period ending today expires at the next job), period without raw data (no `$merge` shown), partially outside retention (warning), raw docs read = first `$match` count, `geradoPor` = latest ok run |
 | `test_ingestao.py`, `test_previa.py` | ingestion moves only what already happened and never loses arrivals; tomorrow's preview |
-| `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, reset; validators and indexes read from the database |
+| `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, reset with per-batch progress; validators and indexes read from the database |
 | `test_trigger_export.py` | exported trigger pipelines equal the Python ones; Functions run in Node |
-| `test_api.py`, `test_operadores.py` | route contracts, the `query` block, 409 during reset, 422 on bad input, 503 without host |
+| `test_api.py`, `test_operadores.py` | route contracts, the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
 
 ## Limitations
 

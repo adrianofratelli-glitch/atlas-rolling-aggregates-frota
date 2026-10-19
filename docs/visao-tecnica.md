@@ -118,8 +118,10 @@ modelo. Mesmo schema da raw; guarda as observações dos próximos 14 dias gerad
 
 A raw fica **200 dias** (TTL): cobre a janela de 180 dias com margem e permite consultas
 sob demanda em períodos um pouco mais antigos. Período anterior à retenção responde "sem
-dados brutos para esse período". O salvo sob demanda vive 1–30 dias (padrão 7) se o
-período é absoluto e até o próximo job se é relativo. Leituras filtram `expiraEm > agora`,
+dados brutos para esse período" (e o bloco mostrado não traz `$merge`, porque nada roda);
+período que só começa antes dela é calculado com o que há e avisa "parte do período não
+tem mais dados brutos". O salvo sob demanda vive 1–30 dias (padrão 7) se o período é
+absoluto e até o próximo job se é relativo ou se termina hoje (ainda está crescendo). Leituras filtram `expiraEm > agora`,
 porque o monitor de TTL roda a cada ~60 s.
 
 ## Pipelines
@@ -155,8 +157,13 @@ propósito e o `n` aparece como veio.
 
 Toda rota que executa algo devolve `query`: `{le, grava, operacao, mongosh, operadores:
 [{op, explicacao}]}` (`frota/operadores.py`), e as respostas da base trazem também
-`geradoPor` (o pipeline do job que produziu aquela base). É o que a gaveta "Ver query /
-chamada executada" mostra.
+`geradoPor` (o pipeline do último job com status `ok`, com a janela e o `runId` dele). É o
+que a gaveta "Ver query / chamada executada" mostra.
+
+`docsLidos` é a prova de custo: na base, quantos documentos prontos foram somados; na raw,
+quantos documentos passaram pelo primeiro `$match` (rota + período), antes do filtro de dia
+e hora (as `amostras` são o `n` que sobra). O tempo exibido é medido no app e no Atlas é
+quase todo ida e volta de rede, por isso a UI o chama de "ida e volta ao banco".
 
 ## Agendamento (Atlas Scheduled Triggers)
 
@@ -173,7 +180,7 @@ botão do passo 3. Implantação: `make trigger-deploy` (ver `atlas-trigger/READ
 
 ## Compatibilidade de operadores
 
-Executado e testado (87 testes) em **MongoDB 8.0.34** (Docker, replica set de 1 nó) e
+Executado e testado (96 testes) em **MongoDB 8.0.34** (Docker, replica set de 1 nó) e
 **MongoDB 9.0.4** (Atlas). As versões mínimas são as da documentação.
 
 | Operador / recurso | Uso | Disponível desde |
@@ -196,8 +203,9 @@ make test      # pytest no alvo (banco frota_eta_test)
 ```
 
 Outros alvos: `make job [DATA=AAAA-MM-DD]`, `make ingerir`, `make pipelines`,
-`make trigger-deploy`, `make limpar-atlas [CONFIRMAR=1]` (remove bancos `frota_eta_*`
-de teste e sobras da v1). Alvo: Atlas se `MONGODB_URI` estiver preenchida, senão Docker
+`make trigger-deploy`, `make limpar-atlas [CONFIRMAR=1]` (dropa só os bancos da allowlist
+exata `frota_eta_bench` e `frota_eta_*_test`; `frota_eta` nunca é dropado, só perde as
+collections fora do schema v2, sobras da v1; sem `CONFIRMAR=1` apenas lista). Alvo: Atlas se `MONGODB_URI` estiver preenchida, senão Docker
 local (27027); `FROTA_MONGO=local` força o local.
 
 ## Integração com o portfólio

@@ -29,7 +29,8 @@ Recreate the database with `make seed` (or "Resetar demo").
 - Removed: incremental design, buckets, watermark, versioned config, night rule, simulated
   clock, raw-vs-materialized `explain` tab, benchmark profile `escala`.
 - The data model is presented as a reference model to adapt to the real master data.
-- 87 tests on Atlas (9.0.4) and local MongoDB 8.0.34.
+- Final review: on-demand `docsLidos` counts the raw docs matched by the first `$match`; the UI labels the time as "ida e volta ao banco"; an absolute period ending today expires at the next job; partially-out-of-retention periods warn; `/api/estado` `ultimoJob` is the latest ok run (`ultimoErro` apart); the step 6 preview is cached in-process.
+- 96 tests on Atlas (9.0.4) and local MongoDB 8.0.34.
 
 ## 1.0.1 (2026-10-16)
 

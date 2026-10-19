@@ -15,7 +15,7 @@ Extraído do código em `frota/`, `jobs/`, `scripts/`, `api/`, `frontend/` e `at
 | `frota/job.py` | `rodar_job(db, data_ref, origem)`: lê o relógio do servidor (`hello.localTime`), roda o pipeline, limpa `atualizadoEm < inícioDoRun`, registra `job_runs` (erro mascarado). |
 | `frota/cenario.py` | `Filtro` (validação, chave sha1), `consultar`: base pronta com ampliação por poucas amostras, ou sob demanda na raw com leitura/gravação em `consultas_salvas`. |
 | `frota/ingestao.py` | `ingerir(db, agora)`: escolhe os `_id` já vencidos da fila, `$merge` só deles e apaga só eles. |
-| `frota/previa.py` | Prévia do próximo job (só leitura): dia que entra, dia que sai, chaves que somem. |
+| `frota/previa.py` | Prévia do próximo job (só leitura): dia que entra, dia que sai, chaves que somem. O `$group` das chaves percorre 180 dias de raw (~3,4 s no Atlas); a API guarda esse número em memória por (banco, dataRef, último run ok, tamanho estimado da raw), então a revisita é imediata e a ingestão ou um novo job invalidam. |
 | `frota/operadores.py`, `frota/mongosh.py` | Bloco `query` (lê, grava, mongosh, operadores explicados) e serialização para JSON/mongosh. |
 | `frota/gerador.py`, `frota/seed.py` | Gerador determinístico (perfis `demo` e `teste`, padrões por dia/hora/veículo, trechos esparsos) e `resetar` em torno do instante do clique (raw até agora, 14 dias futuros na fila, job). |
 | `jobs/materializar.py` | CLI do job (`--data`, `--db`), origem `cli`. |
