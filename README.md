@@ -167,7 +167,7 @@ host, port or URI.
 
 ## Tests
 
-The same 105 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
+The same 107 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
 portfolio cluster) and **local Docker 8.0.34**.
 
 | File | Covers |
