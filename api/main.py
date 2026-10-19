@@ -12,8 +12,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-from zoneinfo import ZoneInfo
-
 from fastapi import Body, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -22,10 +20,11 @@ from pymongo.errors import PyMongoError
 
 from frota import cenario, ingestao, previa, seed as seed_mod, settings
 from frota.bootstrap import bootstrap
+from frota.colecoes import COLECOES
 from frota.db import get_db, mascarar
 from frota.janela import ATALHOS, DOW_NOMES, hoje_local, janela_padrao
 from frota.job import rodar_job
-from frota.mongosh import jsonavel, para_mongosh
+from frota.mongosh import jsonavel
 from frota.operadores import bloco_query
 from frota.pipelines import job as job_pipe
 from frota.schemas import TIPOS_VEICULO
@@ -46,7 +45,6 @@ _boot: set[str] = set()
 _reset = {"resetando": False, "etapa": None, "pct": 0.0, "erro": None, "fim": None}
 _trava = threading.Lock()
 RAW = "trecho_observacoes"
-_TZ = ZoneInfo(settings.TZ)
 BASE = job_pipe.COLECAO
 _PRIVADOS = {"owner"}
 _cache_previa: dict = {}  # a prévia agrupa 180 dias de raw (segundos no Atlas): ver previa.proximo
@@ -146,7 +144,8 @@ def _trechos(d) -> list[dict]:
     return [{"origem": t["origem"], "destino": t["destino"],
              "nomeOrigem": nomes.get(t["origem"], t["origem"]),
              "nomeDestino": nomes.get(t["destino"], t["destino"]),
-             "esparso": bool(t.get("esparso", False))}
+             "esparso": bool(t.get("esparso", False)),
+             "tipos": t.get("tiposVeiculo") or TIPOS_VEICULO}
             for t in d.trechos.find({}).sort([("origem", 1), ("destino", 1)])]
 
 
@@ -181,71 +180,58 @@ def opcoes():
               "dias": DOW_NOMES})
 
 
-# ---- raw --------------------------------------------------------------------
+# ---- collections e script do trigger -----------------------------------------
 
-def _hora(x: dict) -> int:
-    return x["observadoEm"].astimezone(_TZ).hour
-
-
-def _amostra(docs: list[dict], n: int = 12) -> list[dict]:
-    """Até `n` docs variando dia e hora, de forma determinística.
-
-    Um doc por dia local, dias espalhados; o i-ésimo dia fica com o doc cuja hora local é
-    a mais próxima de (i*7)%24. Faltando dias, completa com docs restantes de horas ainda
-    não usadas primeiro.
-    """
-    por_dia: dict = {}
-    for x in docs:
-        por_dia.setdefault(hoje_local(x["observadoEm"]), []).append(x)
-    dias = sorted(por_dia)
-    if len(dias) > n:
-        passo = (len(dias) - 1) / (n - 1)
-        dias = [dias[round(i * passo)] for i in range(n)]
-    esc, usados = [], set()
-    for i, k in enumerate(dias):
-        alvo = (i * 7) % 24
-        x = min(por_dia[k], key=lambda y: (min((_hora(y) - alvo) % 24, (alvo - _hora(y)) % 24),
-                                           y["observadoEm"]))
-        esc.append(x)
-        usados.add(id(x))
-    resto = sorted((x for x in docs if id(x) not in usados), key=lambda x: x["observadoEm"])
-    horas = {_hora(x) for x in esc}
-    while len(esc) < n and resto:
-        x = next((y for y in resto if _hora(y) not in horas), resto[0])
-        resto.remove(x)
-        esc.append(x)
-        horas.add(_hora(x))
-    return sorted(esc, key=lambda x: x["observadoEm"])
+def _info_colecoes(d) -> dict[str, dict]:
+    """Validator e índices de verdade (do banco), por collection."""
+    achadas = {c["name"]: c for c in
+               d.command("listCollections", filter={"type": "collection"})["cursor"]["firstBatch"]}
+    saida = {}
+    for nome in achadas:
+        validator = achadas[nome].get("options", {}).get("validator")
+        indices = [{"nome": i["name"], "chave": dict(i["key"]),
+                    **({"unico": True} if i.get("unique") else {}),
+                    **({"ttlSegundos": i["expireAfterSeconds"]}
+                       if "expireAfterSeconds" in i else {})}
+                   for i in d[nome].list_indexes()]
+        saida[nome] = {"validator": validator, "indices": indices,
+                       "docs": d[nome].estimated_document_count()}
+    return saida
 
 
-@app.get("/api/raw")
-def raw(origem: str | None = None, destino: str | None = None,
-        tipoVeiculo: str | None = None):
+@app.get("/api/colecoes")
+def colecoes():
+    """O schema de cada collection (do banco) com a explicação escrita à mão. Sem amostra."""
     if _resetando():
         return _ocupado()
     d = db()
-    if not origem or not destino:
-        t = next((t for t in _trechos(d) if not t["esparso"]), None)
-        if t is None:
-            raise ValueError("Não há trechos na base; recrie a demo.")
-        origem, destino = origem or t["origem"], destino or t["destino"]
-    tipo = tipoVeiculo or "CARRETA"
-    filtro = {"origem": origem, "destino": destino, "tipoVeiculo": tipo}
-    docs = list(d[RAW].find(filtro).sort("observadoEm", -1).limit(3000))
-    info = d.command("listCollections", filter={"name": RAW})["cursor"]["firstBatch"]
-    validator = (info[0].get("options", {}).get("validator") if info else None)
-    indices = [{"nome": i["name"], "chave": dict(i["key"]),
-                **({"unico": True} if i.get("unique") else {}),
-                **({"ttlSegundos": i["expireAfterSeconds"]}
-                   if "expireAfterSeconds" in i else {})}
-               for i in d[RAW].list_indexes()]
-    query = {"le": [RAW], "grava": [], "operacao": "find", "operadores": [],
-             "mongosh": f"db.{RAW}.find({para_mongosh(filtro)}).sort({{ observadoEm: -1 }})"
-                        f".limit(3000)"}
-    # exemplo de como a ingestão grava (o mesmo pipeline de frota/pipelines/ingestao.py)
-    return J({"filtro": filtro, "amostra": _amostra(docs),
-              "schema": {"validator": validator, "indices": indices}, "query": query,
-              "ingestao": ingestao.bloco(agora_utc())})
+    info = _info_colecoes(d)
+    lista = []
+    for c in COLECOES:
+        real = info.get(c["nome"], {})
+        js = (real.get("validator") or {}).get("$jsonSchema", {})
+        props, req = js.get("properties", {}), set(js.get("required", []))
+        campos = [{"nome": k, "descricao": txt, "schema": props.get(k),
+                   "obrigatorio": k in req} for k, txt in c["campos"].items()]
+        lista.append({**{k: c[k] for k in ("nome", "papel", "grava", "le", "retencao", "exemplo")},
+                      "campos": campos, "docs": real.get("docs"),
+                      "indices": [{**i, "porque": c["porque_indice"].get(i["nome"], "")}
+                                  for i in real.get("indices", [])]})
+    return J({"colecoes": lista, "ingestao": ingestao.bloco(agora_utc())})
+
+
+TRIGGER_DIR = Path(__file__).resolve().parent.parent / "atlas-trigger"
+
+
+@app.get("/api/trigger-script")
+def trigger_script():
+    """O que o Atlas Scheduled Trigger roda: a Function e a configuração do agendamento."""
+    arquivos = [("funcao", "functions/rodarJob.js"), ("trigger", "triggers/jobDiario.json")]
+    return J({k: {"arquivo": f"atlas-trigger/{rel}",
+                  "codigo": (TRIGGER_DIR / rel).read_text(encoding="utf-8")}
+              for k, rel in arquivos}
+             | {"cron": settings.CRON_JOB_UTC,
+                "horarioLocal": "{:02d}:{:02d}".format(*settings.JOB_HORA_LOCAL)})
 
 
 # ---- job, cenário, prévia ---------------------------------------------------

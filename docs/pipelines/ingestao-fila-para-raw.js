@@ -8,10 +8,10 @@ db.ingestao_simulada.aggregate([
   // documento é substituído (não duplica).
   {
     $merge: {
-      into: "trecho_observacoes",
-      on: [ "viagemId", "seq" ],
-      whenMatched: "replace",
-      whenNotMatched: "insert"
+      into: "trecho_observacoes",  // collection de destino
+      on: [ "viagemId", "seq" ],  // campos que dizem quando é "o mesmo documento"
+      whenMatched: "replace",  // mesma chave: troca o documento inteiro (nunca soma por cima)
+      whenNotMatched: "insert"  // chave nova: insere
     }
   }
 ])

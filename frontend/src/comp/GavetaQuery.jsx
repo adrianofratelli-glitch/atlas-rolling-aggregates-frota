@@ -62,12 +62,12 @@ function Bloco({ query }) {
 
 // `extra`: seção adicional com título, frase e outro comando (ex.: como a ingestão grava).
 export default function GavetaQuery({ query, geradoPor, extra }) {
-  if (!query) return null
+  if (!query && !extra) return null
   return (
     <details className="gaveta">
-      <summary>Ver query / chamada executada</summary>
+      <summary>{query ? 'Ver query / chamada executada' : 'Ver o exemplo de ingestão'}</summary>
       <div className="gaveta-corpo">
-        <Bloco query={query} />
+        {query && <Bloco query={query} />}
         {geradoPor && (
           <section className="gerado" aria-label="Como essa base foi gerada">
             <h4>Como essa base foi gerada <small>job diário</small></h4>

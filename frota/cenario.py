@@ -173,6 +173,16 @@ def _gerado_por(db: Database, agora: datetime) -> dict:
     return bloco_query(pl.RAW, comentados(p), [pl.RAW], [job_pl.COLECAO])
 
 
+# O aggregate devolve só somas; a média e o desvio saem desta conta, feita no backend.
+RODAPE_CONTA = (
+    "O aggregate devolve só somas. A estimativa sai desta conta, feita depois, fora do banco:\n"
+    "  média (min)   = somaMin / n\n"
+    "  desvio padrão = raiz( somaQuadMin / n  -  média² )\n"
+    "                  (média dos quadrados menos o quadrado da média)\n"
+    "Por isso o job guarda n e somas, e não só a média: somas se juntam (várias horas e dias\n"
+    "numa resposta só); médias já calculadas não se juntam sem perder o peso de cada uma."
+)
+
 _DETALHE_BASE = {
     "pedido": "somado da base pronta do job diário",
     "todos_os_dias": "poucas amostras: ampliado para todos os dias da semana nas mesmas horas",
@@ -194,7 +204,7 @@ def _da_base(db: Database, f: Filtro, agora: datetime) -> dict:
     else:
         nivel = "sem_historico"
     ms = round((time.perf_counter() - t0) * 1000, 1)
-    query = bloco_query(pl.BASE, comentados(p), [pl.BASE], [])
+    query = bloco_query(pl.BASE, comentados(p), [pl.BASE], [], rodape=RODAPE_CONTA)
     gerado = _gerado_por(db, agora)
     if nivel == "sem_historico":
         return _resposta("job_diario", _DETALHE_BASE[nivel], query, origem="base", nivel=nivel,
@@ -223,7 +233,8 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
     salvar = None
     if fim <= inicio_raw or ini >= agora:
         # nada roda: o bloco mostra o cálculo sem o $merge, porque nada seria gravado
-        query = bloco_query(pl.RAW, comentados(pl.raw(f, ini, fim, horas, None)), [pl.RAW], [])
+        query = bloco_query(pl.RAW, comentados(pl.raw(f, ini, fim, horas, None)), [pl.RAW], [],
+                            rodape=RODAPE_CONTA)
         return _resposta("sob_demanda", SEM_RAW, query, origem="raw", aviso=SEM_RAW)
     aviso = RAW_PARCIAL if ini < inicio_raw else None
     if f.persistir:
@@ -233,7 +244,7 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
         salvar = {"_id": chave, "periodo": tipo, "expiraEm": expira}
     p = pl.raw(f, ini, fim, horas, salvar)
     grava = [pl.SALVOS] if salvar else []
-    query = bloco_query(pl.RAW, comentados(p), [pl.RAW], grava)
+    query = bloco_query(pl.RAW, comentados(p), [pl.RAW], grava, rodape=RODAPE_CONTA)
 
     t0 = time.perf_counter()
     salvo = db[pl.SALVOS].find_one({"_id": chave, "expiraEm": {"$gt": agora}})

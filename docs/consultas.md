@@ -166,4 +166,4 @@ db.job_runs.find({}, { _id: 0, origem: 1, dataRef: 1, status: 1, lidos: 1, grava
 [ { origem: 'reset', dataRef: '2026-10-19', status: 'ok', lidos: 312164, gravados: 8834, removidos: 0, ms: 5808.1 } ]
 ```
 
-312.164 observações da janela viraram 8.834 documentos prontos em ~5,8 s (Atlas).
+752.711 observações da janela viraram 29.962 documentos prontos em ~11 s (Atlas).

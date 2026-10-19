@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.3.0 (2026-10-19)
+
+- **Step 1 is now "Collections e schema"**: the raw-data sample is gone (a slice of rows says
+  little when the real volume is another order of magnitude). Each of the 7 collections shows
+  its role, who writes/reads it, retention, every field with type and required flag read from
+  the live `$jsonSchema`, the indexes with the reason for each, and an illustrative document
+  shape. `GET /api/raw` was replaced by `GET /api/colecoes`.
+- **Step 3 shows the Atlas Trigger script**: a drawer with the Scheduled Trigger config and the
+  Function the customer would deploy (`GET /api/trigger-script`). The Function file now lists,
+  in plain Portuguese, what each pipeline stage does.
+- **Commented queries**: lines of the shown mongosh queries get a short `//` note on the right
+  (`$group` sums, `$round`, `$$NOW`, `whenMatched: "replace"`…) and a footer explains that the
+  aggregate returns only sums and how mean and standard deviation are computed from them.
+- **N × N mesh**: 4 bases (adds São José dos Campos) and 12 stations; every base serves every
+  station and each station returns to its base: 60 legs (was 14). Legs over 120 km only have
+  CARRETA and BITREM (`tiposVeiculo` on `trechos`), the type dropdown follows the chosen leg.
+  Peak hours no longer triple the observation count, which keeps the demo near 870 thousand
+  observations (it was 347 thousand; real run: 836 thousand raw, 29,962 ready averages, job in ~11 s on Atlas).
+
 ## 2.2.0 (2026-10-19)
 
 - **Flow map** at the top of every step (`frontend/src/comp/MapaFluxo.jsx`, inline SVG, no

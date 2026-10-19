@@ -1,6 +1,6 @@
 # Plano de implementação
 
-Estado em 2026-10-19. Versão 2.2.0 na branch `feat/v2-simplificacao` (ainda não publicada).
+Estado em 2026-10-19. Versão 2.3.0 na `main`.
 A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0.0/v1.0.1.
 
 ## Concluído (v2.0.0)
@@ -23,7 +23,7 @@ A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0
 10. Limpeza dos bancos antigos (Atlas e local) e alvos do Makefile.
 11. Docs públicas, prints do Atlas real, portfólio e grafo.
 
-107 testes no Atlas (9.0.4) e no MongoDB 8.0.34 local (v2.2).
+107 testes no Atlas (9.0.4) (v2.3); demo com 836 mil observações, 60 trechos e 29.962 médias.
 
 ## Não feito / próximos passos
 

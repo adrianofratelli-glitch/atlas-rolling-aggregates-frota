@@ -55,10 +55,15 @@ def test_esparsos_tem_celulas_raras():
 
 def test_perfil_demo_formato():
     g = gerar(AGORA, 42, "demo")
-    assert len(g["trechos"]) == 14 and sum(t["esparso"] for t in g["trechos"]) == 2
-    assert sum(p["tipo"] == "base" for p in g["pontos"]) == 3
-    assert sum(p["tipo"] == "posto" for p in g["pontos"]) == 9
-    assert 300_000 <= len(g["observacoes"]) <= 400_000
+    assert len(g["trechos"]) == 60 and sum(t["esparso"] for t in g["trechos"]) == 2
+    assert sum(p["tipo"] == "base" for p in g["pontos"]) == 4
+    assert sum(p["tipo"] == "posto" for p in g["pontos"]) == 12
+    assert 700_000 <= len(g["observacoes"]) <= 900_000
+    # N × N: toda base atende todo posto; viagem longa só com os tipos pesados
+    ids = {t["_id"] for t in g["trechos"]}
+    assert all(f"BASE-00{b}|POSTO-{i}{j}" in ids for b in range(1, 5) for i in range(1, 5) for j in range(1, 4))
+    longos = [t for t in g["trechos"] if t["distanciaBaseKm"] >= 120]
+    assert longos and all(t["tiposVeiculo"] == ["CARRETA", "BITREM"] for t in longos)
     por_tipo = {}
     for o in g["observacoes"]:
         por_tipo.setdefault(o["tipoVeiculo"], set()).add(o["veiculoId"])

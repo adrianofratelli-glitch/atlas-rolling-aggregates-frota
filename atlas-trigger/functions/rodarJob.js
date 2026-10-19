@@ -11,6 +11,18 @@ const JANELA_DIAS = 180;
 // O Python usa America/Sao_Paulo (zoneinfo); se o horário de verão voltar, revisar aqui.
 const OFFSET_SP_HORAS = -3;
 
+// O que cada estágio do pipeline faz (o JSON abaixo é exatamente o que vai ao MongoDB;
+// os textos "__INICIO__" etc. são trocados pelos valores da execução):
+//  1. $match   Pega só as observações dos últimos 180 dias, sem o dia de hoje.
+//  2. $set     Descobre o dia da semana (1 = segunda … 7 = domingo) e a hora, no horário de
+//              São Paulo.
+//  3. $group   Agrupa por rota, tipo de veículo, dia da semana e hora, guardando contagem e
+//              somas.
+//  4. $project Arredonda as somas, calcula as médias e carimba o resultado com a data e o
+//              número da execução.
+//  5. $merge   Grava o resultado numa collection persistente (a "materialized view"): se já
+//              existe um documento com a mesma chave, ele é substituído; se não, é inserido.
+
 const TEMPLATE = [
   {
     "$match": {

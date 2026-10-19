@@ -16,8 +16,8 @@ Fonte: `frota/pipelines/*.py`, `frota/job.py`, `frota/cenario.py`, `frota/ingest
 | Leitura do salvo | `consultas_salvas` | `findOne({_id: chave, expiraEm: {$gt: agora}})` | `_id`; TTL `expiraEm_ttl` |
 | Ingestão simulada | `ingestao_simulada` | `find(observadoEm < agora, {_id})` → `$match _id $in` → `$project {_id: 0}` → `$merge` em `trecho_observacoes` on `{viagemId, seq}`, `replace` → `deleteMany(_id $in)` | `observadoEm_1`; `viagemId_1_seq_1` |
 | Prévia do próximo job | `trecho_observacoes`, `trecho_media_dow_hora` | `countDocuments` do dia que entra e do que sai; `$group` de chaves distintas na nova janela vs chaves da base | `observadoEm_1_ttl` |
-| Amostra do passo 1 | `trecho_observacoes` | `find({o, d, tipo}).sort({observadoEm: -1}).limit(3000)` + escolha de 12 em Python | `origem_1_destino_1_tipoVeiculo_1_observadoEm_1` |
-| Schema do passo 1 | `trecho_observacoes` | `listCollections` (validator) e `listIndexes` | — |
+| Collections do passo 1 | todas | `listCollections` (validator), `listIndexes` e `estimatedDocumentCount` por collection | — |
+| Script do trigger (passo 3) | — | lê `atlas-trigger/functions/rodarJob.js` e `triggers/jobDiario.json` do disco (`GET /api/trigger-script`) | — |
 | Histórico | `job_runs` | `find().sort({iniciadoEm: -1}).limit(n)` | `iniciadoEm_-1` |
 
 Nenhuma consulta usa `$regex`, `$lte` no limite superior da janela, `$inc` em `$merge` ou o

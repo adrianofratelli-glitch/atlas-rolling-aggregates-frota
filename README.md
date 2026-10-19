@@ -26,19 +26,19 @@ for each operator used.
 
 | # | Step | What it shows | API |
 |---|---|---|---|
-| 1 | Raw data and schema | 12 observations of one leg and vehicle spread over days and hours; the `$jsonSchema` and the indexes **read from the database**, each with its reason | `GET /api/raw` |
+| 1 | Collections and schema | what each of the 7 collections stores, who writes and reads it, what every field means; types, required flags and indexes **read from the database**, each index with its reason. No data sample: the point is the contract, not a slice of rows | `GET /api/colecoes` |
 | 2 | The rule | the 180-day window with today's concrete dates, the key (leg × vehicle × day of week × hour), São Paulo time | `GET /api/estado` |
-| 3 | Build the base | "Rodar job agora": the job pipeline stage by stage, `$merge` highlighted, counters (read, written, removed, time) | `POST /api/job` |
+| 3 | Build the base | "Rodar job agora": the job pipeline stage by stage, `$merge` highlighted, counters (read, written, removed, time); a drawer shows the **Atlas Scheduled Trigger** (Function + schedule) the customer would deploy, which runs this same pipeline | `POST /api/job`, `GET /api/trigger-script` |
 | 4 | Query | one form for every case: origin, destination (only valid ones for the origin), vehicle type, **vehicle** ("all vehicles of the type" or one of its 15), day chips, hour range (Morning 06–12, Afternoon 12–18, Night 18–06) and period (default 180-day window, specific dates, last N days). Default window for the whole type → answered automatically from the ready base, badge **"Job diário"**; anything else → "Calcular" on the raw, badge **"Sob demanda"**, **"guardar o resultado" ticked by default** (validity 1–30 days, or until the next job for relative periods); repeating it reads the saved result. Mean ± std dev, km, samples, documents read; on a sparse leg the base widens and says so, labelled **"rule to validate with the customer"** | `GET /api/opcoes`, `POST /api/cenario` |
 | 5 | When it refreshes | the schedule (03:10 São Paulo), the last runs from `job_runs` and a read-only preview of tomorrow's job: the day that enters, the day that leaves, keys that would disappear | `GET /api/job_runs`, `GET /api/proximo-job` |
 
-![Step 1: a sample of the raw collection next to its validator and indexes, read from the database](docs/screenshots/01-dado-bruto-e-schema.png)
+![Step 1: the 7 collections: role, who writes and reads, every field with its type from the live validator, indexes with the reason for each](docs/screenshots/01-collections-e-schema.png)
 
 ![Step 4 with one specific vehicle: the default window computed on the raw collection, because the base is per vehicle type](docs/screenshots/04-consultar-veiculo.png)
 
 ![Step 5: the schedule, the preview of tomorrow's job and the run history](docs/screenshots/05-quando-atualiza.png)
 
-More screenshots: [step 3](docs/screenshots/03-gerar-a-base.png).
+More screenshots: [step 3, with the Atlas Trigger script drawer open](docs/screenshots/03-gerar-a-base.png).
 
 ## How it works
 
@@ -183,7 +183,7 @@ portfolio cluster) and **local Docker 8.0.34**.
 ## Limitations
 
 - Tested on a shared Atlas cluster (9.0.4) and local MongoDB 8.0; nothing with sharding or
-  with the customer's volume (the demo has ~347 thousand observations over 14 legs and 15 vehicles per type).
+  with the customer's volume (the demo has ~836 thousand observations over 60 legs (4 bases × 12 stations, every base serves every station) and 15 vehicles per type).
 - The triggers are code-complete and tested offline, but not deployed.
 - Simple mean and population standard deviation, outliers included.
 - The widening order for few samples and the hour shortcuts are proposals to validate.

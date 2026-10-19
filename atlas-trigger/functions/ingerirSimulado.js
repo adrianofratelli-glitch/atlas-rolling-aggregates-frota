@@ -12,6 +12,12 @@ const FILTRO_PENDENTES = {
   }
 };
 
+// O que cada estágio do pipeline faz:
+//  1. $match   Pega da fila só as observações já escolhidas (as de horário já passado).
+//  2. $project Tira o _id para que cada documento ganhe um novo na collection de destino.
+//  3. $merge   Grava na collection de observações; se a mesma viagem e trecho já estiverem
+//              lá, o documento é substituído (não duplica).
+
 const TEMPLATE = [
   {
     "$match": {

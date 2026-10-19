@@ -3,14 +3,14 @@ import { get, post } from './api.js'
 import { dataHora, ddmm } from './fmt.js'
 import { filtroInicial, filtroValido } from './comp/FiltroCenario.jsx'
 import ResetDemo, { Progresso } from './comp/ResetDemo.jsx'
-import DadoBruto from './passos/DadoBruto.jsx'
+import Colecoes from './passos/Colecoes.jsx'
 import Regra from './passos/Regra.jsx'
 import GerarBase from './passos/GerarBase.jsx'
 import Consultar from './passos/Consultar.jsx'
 import QuandoAtualiza from './passos/QuandoAtualiza.jsx'
 
 const PASSOS = [
-  { titulo: 'Dado bruto e schema', lead: 'Cada viagem gera observações: quando, quanto andou e quanto demorou.', C: DadoBruto },
+  { titulo: 'Collections e schema', lead: 'O que cada collection guarda, quem grava e o que cada campo significa.', C: Colecoes },
   { titulo: 'A regra', lead: 'A média sai dos últimos 180 dias, por trecho, veículo, dia da semana e hora.', C: Regra },
   { titulo: 'Gerar a base', lead: 'Um aggregate lê a raw e grava as médias prontas numa collection.', C: GerarBase },
   { titulo: 'Consultar', lead: 'Qualquer trecho, veículo, dia, hora e período, numa consulta só.', C: Consultar },

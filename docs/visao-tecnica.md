@@ -223,7 +223,7 @@ local (27027); `FROTA_MONGO=local` força o local.
 ## Limitações
 
 - Testado num cluster Atlas compartilhado e no MongoDB 8.0 local; nada com sharding nem
-  com o volume real do cliente (a demo tem ~347 mil observações em 14 trechos).
+  com o volume real do cliente (a demo tem ~836 mil observações em 60 trechos).
 - Média simples e desvio populacional, outliers incluídos. `$median`/`$percentile` não se
   compõem entre horas a partir de soma e contagem.
 - Triggers com código pronto e testado fora do Atlas, mas não implantados.

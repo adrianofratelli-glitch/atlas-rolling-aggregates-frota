@@ -23,7 +23,7 @@ from bson import json_util
 from frota.cenario import Filtro
 from frota.db import _HOST
 from frota.janela import inicio_dia, janela_padrao, proximo_job
-from frota.mongosh import pipeline_mongosh
+from frota.mongosh import _quebrar, pipeline_mongosh
 from frota.pipelines import cenario as pl_cenario
 from frota.pipelines import comentados, estagios
 from frota.pipelines import ingestao as pl_ingestao
@@ -113,6 +113,9 @@ const JANELA_DIAS = @@JANELA@@;
 // O Python usa America/Sao_Paulo (zoneinfo); se o horário de verão voltar, revisar aqui.
 const OFFSET_SP_HORAS = -3;
 
+// O que cada estágio do pipeline faz (o JSON abaixo é exatamente o que vai ao MongoDB;
+// os textos "__INICIO__" etc. são trocados pelos valores da execução):
+@@PASSOS@@
 const TEMPLATE = @@TEMPLATE@@;
 
 @@COMUM@@
@@ -192,6 +195,8 @@ _INGESTAO = """\
 
 const FILTRO_PENDENTES = @@FILTRO@@;
 
+// O que cada estágio do pipeline faz:
+@@PASSOS@@
 const TEMPLATE = @@TEMPLATE@@;
 
 @@COMUM@@
@@ -215,6 +220,18 @@ exports = async function () {
 """
 
 
+def _passos(p) -> str:
+    """Um comentário JS por estágio: `//  1. $match  frase`, com quebra alinhada."""
+    linhas = []
+    for i, e in enumerate(p, start=1):
+        op = next(iter(e.estagio))
+        cab = f"//  {i}. {op:<8} "
+        quebradas = _quebrar(e.comentario, 78)
+        linhas.append(cab + quebradas[0])
+        linhas += [f"//{' ' * (len(cab) - 2)}{q}" for q in quebradas[1:]]
+    return "\n".join(linhas) + "\n"
+
+
 def _js(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=2)
 
@@ -230,11 +247,14 @@ def gerar_functions() -> dict[str, str]:
     comum = _preencher(_COMUM, {"BANCO": BANCO, "HOST": json.dumps(_HOST.pattern)})
     job = _preencher(_CABECALHO + _JOB, {
         "ORIGEM": "frota/pipelines/job.py", "COMUM": comum, "JANELA": str(JANELA_DIAS),
-        "RAW": pl_cenario.RAW, "MEDIA": pl_job.COLECAO, "TEMPLATE": _js(template_job())})
+        "RAW": pl_cenario.RAW, "MEDIA": pl_job.COLECAO, "TEMPLATE": _js(template_job()),
+        "PASSOS": _passos(pl_job.pipeline(_Marcador("__INICIO__"), _Marcador("__FIM__"),
+                                          _Marcador("__DATA_REF__"), "__RUN_ID__"))})
     ingestao = _preencher(_CABECALHO + _INGESTAO, {
         "ORIGEM": "frota/pipelines/ingestao.py", "COMUM": comum,
         "ORIGEM_COL": pl_ingestao.ORIGEM, "DESTINO_COL": pl_ingestao.DESTINO,
-        "FILTRO": _js(template_filtro_pendentes()), "TEMPLATE": _js(template_ingestao())})
+        "FILTRO": _js(template_filtro_pendentes()), "TEMPLATE": _js(template_ingestao()),
+        "PASSOS": _passos(pl_ingestao.pipeline(_Marcador("__AGORA__"), ["__IDS__"]))})
     return {"functions/rodarJob.js": job, "functions/ingerirSimulado.js": ingestao}
 
 

@@ -40,6 +40,6 @@ trecho_observacoes ──(outro período: $match → $set → $match → $group 
 - `$merge` sempre `whenMatched: "replace"`; documentos guardam somas e contagem.
 - Limpeza do job pelo relógio do servidor: dois runs sobrepostos não se apagam; sem lease.
 - `/api/reset` libera a escrita no banco da demo só para si (`permitir=True`) e roda numa
-  thread; durante o reset `/api/raw`, `/api/job` e `/api/cenario` respondem 409 e não há
+  thread; durante o reset `/api/colecoes`, `/api/job` e `/api/cenario` respondem 409 e não há
   bootstrap.
 - Respostas e erros da API passam por `mascarar`; o campo `owner` nunca sai.

@@ -43,12 +43,12 @@ def operadores_usados(pipeline: list[dict]) -> list[str]:
 
 
 def bloco_query(colecao: str, comentado: list[dict], le: list[str], grava: list[str],
-                operacao: str = "aggregate") -> dict:
+                operacao: str = "aggregate", rodape: str | None = None) -> dict:
     ops = operadores_usados([e["estagio"] for e in comentado])
     return {
         "le": le,
         "grava": grava,
         "operacao": operacao,
-        "mongosh": pipeline_mongosh(colecao, comentado, operacao),
+        "mongosh": pipeline_mongosh(colecao, comentado, operacao, rodape),
         "operadores": [{"op": o, "explicacao": EXPLICACOES.get(o, "")} for o in ops],
     }

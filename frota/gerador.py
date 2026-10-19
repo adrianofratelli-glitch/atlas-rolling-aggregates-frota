@@ -25,22 +25,27 @@ from .settings import DIAS_SIMULADOS, TTL_RAW_DIAS
 
 BASES = [  # (cidade, lon, lat)
     ("Paulínia", -47.15, -22.76), ("Guarulhos", -46.53, -23.45),
-    ("Ribeirão Preto", -47.81, -21.18),
+    ("Ribeirão Preto", -47.81, -21.18), ("São José dos Campos", -45.89, -23.22),
 ]
 FATOR_TIPO = {"TOCO": 1.00, "TRUCK": 1.05, "CARRETA": 1.10, "BITREM": 1.18}
+# malha "completa": toda base atende todo posto (N × N) e cada posto volta à sua base; viagem
+# longa (entre regiões) só com os tipos pesados. "basica": poucos trechos, para os testes.
+TIPOS_PESADOS = ["CARRETA", "BITREM"]
+KM_VIAGEM_LONGA = 120
 PERFIS = {
-    "demo": {"bases": 3, "tipos": ["TOCO", "TRUCK", "CARRETA", "BITREM"], "dias": TTL_RAW_DIAS,
-             "veiculos": 15},
-    "teste": {"bases": 1, "tipos": ["TRUCK", "CARRETA"], "dias": 40, "veiculos": 3},
+    "demo": {"bases": 4, "tipos": ["TOCO", "TRUCK", "CARRETA", "BITREM"], "dias": TTL_RAW_DIAS,
+             "veiculos": 15, "malha": "completa", "peso_pico": 1},
+    "teste": {"bases": 1, "tipos": ["TRUCK", "CARRETA"], "dias": 40, "veiculos": 3,
+              "malha": "basica", "peso_pico": 3},
 }
 P_ESPARSO = 0.03
 SIGMA_RUIDO = 0.12
 P_OUTLIER = 0.01
 
 
-def peso_hora(h: int) -> int:
-    """Observações por trecho × tipo × hora: 3 nos picos, 1 nos demais (mín. 1 = cobertura)."""
-    return 3 if h in (7, 8, 9, 17, 18, 19) else 1
+def peso_hora(h: int, pico: int = 3) -> int:
+    """Observações por trecho × tipo × hora: `pico` nos picos, 1 nos demais (mín. 1 = cobertura)."""
+    return pico if h in (7, 8, 9, 17, 18, 19) else 1
 
 
 def fator_hora(h: int) -> float:
@@ -77,34 +82,53 @@ def _haversine_km(a, b) -> float:
 def _malha(perfil: str, seed: int) -> tuple[list[dict], list[dict]]:
     p = PERFIS[perfil]
     rng = random.Random(f"{seed}-{perfil}-malha")
-    pontos, coords, pares = [], {}, []  # pares: (origem, destino, esparso)
+    pontos, coords, postos = [], {}, {}  # postos: base -> [posto, ...]
     for i, (cidade, lon, lat) in enumerate(BASES[:p["bases"]], start=1):
         bid = f"BASE-{i:03d}"
         coords[bid] = (lon, lat)
         pontos.append({"_id": bid, "tipo": "base", "nome": f"Base {cidade}", "cidade": cidade,
                        "uf": "SP", "location": {"type": "Point", "coordinates": [lon, lat]}})
-        ps = []
+        postos[bid] = []
         for j in range(1, 4):
             pid = f"POSTO-{i}{j}"
             c = (round(lon + rng.gauss(0, 0.2), 4), round(lat + rng.gauss(0, 0.16), 4))
             coords[pid] = c
-            ps.append(pid)
+            postos[bid].append(pid)
             pontos.append({"_id": pid, "tipo": "posto", "nome": f"Posto {i}{j}",
                            "cidade": cidade, "uf": "SP",
                            "location": {"type": "Point", "coordinates": list(c)}})
-        pares += [(bid, ps[0], False), (ps[0], bid, False), (ps[0], ps[1], False)]
-        if p["bases"] > 1:
-            pares.append((ps[1], ps[2], False))
-        if i <= (2 if p["bases"] > 1 else 1):
-            pares.append((ps[2], bid, True))
+    pares = _pares(p, postos)  # (origem, destino, esparso)
     trechos = []
     for o, d, esparso in pares:
         reta = _haversine_km(coords[o], coords[d])
         km = max(round(reta * random.Random(f"{seed}-{o}-{d}").uniform(1.2, 1.45), 1), 1.5)
         vel = 35 if km < 15 else 55 if km < 60 else 70
+        tipos = p["tipos"] if km < KM_VIAGEM_LONGA else [t for t in p["tipos"] if t in TIPOS_PESADOS]
         trechos.append({"_id": f"{o}|{d}", "origem": o, "destino": d, "distanciaBaseKm": km,
-                        "tempoBaseMin": round(km / vel * 60, 1), "esparso": esparso})
+                        "tempoBaseMin": round(km / vel * 60, 1), "esparso": esparso,
+                        "tiposVeiculo": tipos})
     return pontos, trechos
+
+
+def _pares(p: dict, postos: dict[str, list[str]]) -> list[tuple[str, str, bool]]:
+    pares = []
+    bases = list(postos)
+    if p["malha"] == "completa":
+        todos = [x for b in bases for x in postos[b]]
+        pares += [(b, x, False) for b in bases for x in todos]  # toda base atende todo posto
+        for n, b in enumerate(bases):
+            ps = postos[b]
+            pares += [(ps[0], b, False), (ps[1], b, False)]  # volta regular
+            pares.append((ps[2], b, n < 2))  # a volta do 3º posto é rara nas duas primeiras
+        return pares
+    for i, b in enumerate(bases, start=1):
+        ps = postos[b]
+        pares += [(b, ps[0], False), (ps[0], b, False), (ps[0], ps[1], False)]
+        if p["bases"] > 1:
+            pares.append((ps[1], ps[2], False))
+        if i <= (2 if p["bases"] > 1 else 1):
+            pares.append((ps[2], b, True))
+    return pares
 
 
 def gerar(agora: datetime, seed: int, perfil: str = "demo") -> dict:
@@ -122,13 +146,13 @@ def gerar(agora: datetime, seed: int, perfil: str = "demo") -> dict:
         rnd, logn = rng.random, rng.lognormvariate
         seq_dia = 0
         for t in trechos:
-            for tipo in p["tipos"]:
+            for tipo in t["tiposVeiculo"]:
                 ft = FATOR_TIPO[tipo]
                 for h in range(24):
                     if t["esparso"]:
                         n = 1 if rnd() < P_ESPARSO else 0
                     else:
-                        n = peso_hora(h)
+                        n = peso_hora(h, p["peso_pico"])
                     for _ in range(n):
                         seq_dia += 1
                         tempo = (t["tempoBaseMin"] * fator_hora(h) * fator_dow(dow, h) * ft

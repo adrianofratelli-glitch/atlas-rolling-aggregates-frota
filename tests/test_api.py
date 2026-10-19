@@ -91,19 +91,38 @@ def test_cenario_veiculo_invalido_422(cli):
     assert r.status_code == 422 and "veículo" in r.json()["erro"].lower()
 
 
-def test_raw_schema_do_banco(cli):
-    r = cli.get("/api/raw").json()
-    assert set(r) >= {"amostra", "schema", "query"}
-    assert len(r["amostra"]) <= 12
-    assert r["schema"]["validator"] == VALIDATORS["trecho_observacoes"]
-    assert any(i["nome"] == "viagemId_1_seq_1" for i in r["schema"]["indices"])
-    assert r["query"]["operacao"] == "find" and ".find(" in r["query"]["mongosh"]
+def test_colecoes_schema_do_banco(cli):
+    r = cli.get("/api/colecoes").json()
+    por_nome = {c["nome"]: c for c in r["colecoes"]}
+    assert set(por_nome) == set(VALIDATORS)
+    raw = por_nome["trecho_observacoes"]
+    assert "amostra" not in raw and raw["exemplo"]["origem"]
+    obrig = {c["nome"]: c["obrigatorio"] for c in raw["campos"]}
+    assert obrig["tempoMin"] is True
+    assert all(c["schema"] for c in raw["campos"])  # tipo vem do validator do banco
+    assert any(i["nome"] == "viagemId_1_seq_1" and i["porque"] for i in raw["indices"])
     ing = r["ingestao"]
     assert ing["le"] == ["ingestao_simulada"] and ing["grava"] == ["trecho_observacoes"]
-    assert ing["operacao"] == "aggregate"
-    for trecho in ("$match", "$project", "_id: 0", "$merge", "trecho_observacoes", "viagemId", "seq",
-                   "replace", "insert"):
+    for trecho in ("$match", "$project", "_id: 0", "$merge", "viagemId", "replace", "insert"):
         assert trecho in ing["mongosh"], trecho
+
+
+def test_campos_documentados_existem_no_schema():
+    from frota.colecoes import COLECOES
+    for c in COLECOES:
+        props = VALIDATORS[c["nome"]]["$jsonSchema"]["properties"]
+        for k in c["campos"]:
+            assert k in props or k.startswith("(") or k in {"uf", "location", "esparso", "lidos",
+                   "gravados", "removidos", "ms"}, (c["nome"], k)
+
+
+def test_trigger_script(cli):
+    r = cli.get("/api/trigger-script").json()
+    assert "exports = async function" in r["funcao"]["codigo"]
+    assert r["funcao"]["arquivo"] == "atlas-trigger/functions/rodarJob.js"
+    assert '"function_name": "rodarJob"' in r["trigger"]["codigo"]
+    assert r["cron"] == "10 6 * * *" and r["horarioLocal"] == "03:10"
+    assert "mongodb+srv" not in str(r) and "mongodb.net" not in str(r)
 
 
 def test_job_proximo_runs(cli):
@@ -128,7 +147,7 @@ def test_cenario_422_sem_dias(cli):
 
 def test_cenario_409_durante_reset(cli, monkeypatch):
     monkeypatch.setitem(main._reset, "resetando", True)
-    for r in (cli.post("/api/cenario", json=CEN), cli.post("/api/job"), cli.get("/api/raw")):
+    for r in (cli.post("/api/cenario", json=CEN), cli.post("/api/job"), cli.get("/api/colecoes")):
         assert r.status_code == 409
         assert r.json() == {"erro": "a demo está sendo recriada",
                             "acao": "aguarde o reset terminar"}
@@ -183,30 +202,6 @@ def test_estado_responde_durante_reset_sem_bootstrap(cli, reset_limpo, monkeypat
     r = cli.get("/api/estado")
     assert r.status_code == 200 and r.json()["resetando"] is True
     assert chamou == []
-
-
-def test_raw_amostra_varia_horas_e_dias(cli):
-    from datetime import datetime
-    from zoneinfo import ZoneInfo
-    z = ZoneInfo("America/Sao_Paulo")
-    o = next(t for t in cli.get("/api/opcoes").json()["trechos"] if not t["esparso"])
-    am = cli.get("/api/raw", params={"origem": o["origem"], "destino": o["destino"]}).json()["amostra"]
-    ts = [datetime.fromisoformat(a["observadoEm"].replace("Z", "+00:00")).astimezone(z) for a in am]
-    assert len(am) == 12
-    assert len({t.hour for t in ts}) > 6 and len({t.date() for t in ts}) > 6
-
-
-def test_raw_esparso_completa_12(cli, db_sessao):
-    for t in cli.get("/api/opcoes").json()["trechos"]:
-        if not t["esparso"]:
-            continue
-        n = db_sessao.trecho_observacoes.count_documents(
-            {"origem": t["origem"], "destino": t["destino"], "tipoVeiculo": "CARRETA"})
-        if n >= 12:
-            am = cli.get("/api/raw", params={"origem": t["origem"], "destino": t["destino"]}).json()["amostra"]
-            assert len(am) == 12
-            return
-    pytest.skip("sem trecho esparso com 12+ docs no perfil de teste")
 
 
 def test_503_sem_host(cli, monkeypatch):

@@ -17,6 +17,14 @@ export function filtroValido(f, opcoes) {
   return !f.veiculoId || (opcoes.veiculos?.[f.tipoVeiculo] || []).includes(f.veiculoId)
 }
 
+// tipos que fazem o trecho (viagem longa só com os pesados); o escolhido muda se deixar de valer
+const tiposDo = (opcoes, origem, destino) =>
+  opcoes.trechos.find((t) => t.origem === origem && t.destino === destino)?.tipos || opcoes.tipos
+const comTipoValido = (opcoes, v) => {
+  const tipos = tiposDo(opcoes, v.origem, v.destino)
+  return tipos.includes(v.tipoVeiculo) ? v : { ...v, tipoVeiculo: tipos[tipos.length - 2] || tipos[0], veiculoId: '' }
+}
+
 // ao trocar a origem, o destino vai para o primeiro válido (com dados regulares, se houver)
 const primeiroDestino = (trechos, origem) => {
   const ds = trechos.filter((t) => t.origem === origem)
@@ -46,7 +54,8 @@ export function useConsultaAuto(corpo, ativo = true, espera = 300) {
 }
 
 export default function FiltroCenario({ valor, onChange, opcoes, children }) {
-  const set = (campos) => onChange({ ...valor, ...campos })
+  const set = (campos) => onChange(comTipoValido(opcoes, { ...valor, ...campos }))
+  const tipos = tiposDo(opcoes, valor.origem, valor.destino)
   const destinos = opcoes.trechos.filter((t) => t.origem === valor.origem)
   const alternarDia = (d) => {
     const tem = valor.dias.includes(d)
@@ -71,7 +80,7 @@ export default function FiltroCenario({ valor, onChange, opcoes, children }) {
         </label>
         <label className="campo">Tipo de veículo
           <select name="tipoVeiculo" value={valor.tipoVeiculo} onChange={(e) => set({ tipoVeiculo: e.target.value, veiculoId: '' })}>
-            {opcoes.tipos.map((t) => <option key={t} value={t}>{t}</option>)}
+            {tipos.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
         <label className="campo">Veículo

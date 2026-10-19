@@ -51,11 +51,13 @@ with sync_playwright() as p:
     pg = b.new_page(viewport={"width": 1440, "height": 1000}, device_scale_factor=1)
 
     ir(pg, 1)
-    pg.wait_for_selector(".cartao table tbody tr", timeout=LONGO)
-    foto(pg, "01-dado-bruto-e-schema.png")
+    pg.wait_for_selector(".colecao[open] .campos-desc", timeout=LONGO)
+    foto(pg, "01-collections-e-schema.png")
 
     ir(pg, 3)
     pg.wait_for_selector(".acao button.primario", timeout=LONGO)
+    pg.get_by_text("Ver o script do Atlas Trigger").click()
+    pg.wait_for_selector(".gaveta[open] pre", timeout=LONGO)
     foto(pg, "03-gerar-a-base.png")
 
     ir(pg, 4)

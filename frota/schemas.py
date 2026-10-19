@@ -37,6 +37,8 @@ VALIDATORS: dict[str, dict] = {
         "_id": COD, "origem": COD, "destino": COD,
         "distanciaBaseKm": NUM_POS, "tempoBaseMin": NUM_POS,
         "esparso": {"bsonType": "bool"},
+        "tiposVeiculo": {"bsonType": "array", "minItems": 1,
+                         "items": {"enum": TIPOS_VEICULO}},
     }),
     "trecho_observacoes": _obj(_OBS_REQ, _OBS_PROPS),
     "ingestao_simulada": _obj(_OBS_REQ, _OBS_PROPS),

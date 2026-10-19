@@ -8,15 +8,15 @@ db.trecho_observacoes.aggregate([
       destino: "POSTO-11",
       tipoVeiculo: "CARRETA",
       veiculoId: "VEI-CARRETA-7",
-      observadoEm: { $gte: ISODate("2026-04-25T03:00:00.000Z"), $lt: ISODate("2026-10-22T03:00:00.000Z") }
+      observadoEm: { $gte: ISODate("2026-04-25T03:00:00.000Z"), $lt: ISODate("2026-10-22T03:00:00.000Z") }  // o início entra ($gte), o fim fica de fora ($lt)
     }
   },
   // Descobre o dia da semana (1 = segunda … 7 = domingo) e a hora, no horário de São
   // Paulo.
   {
     $set: {
-      dow: { $isoDayOfWeek: { date: "$observadoEm", timezone: "America/Sao_Paulo" } },
-      hora: { $hour: { date: "$observadoEm", timezone: "America/Sao_Paulo" } }
+      dow: { $isoDayOfWeek: { date: "$observadoEm", timezone: "America/Sao_Paulo" } },  // 1 = segunda … 7 = domingo, no horário de São Paulo
+      hora: { $hour: { date: "$observadoEm", timezone: "America/Sao_Paulo" } }  // 0 a 23, no horário de São Paulo
     }
   },
   // Fica só com os dias da semana e as horas escolhidos.
@@ -24,22 +24,22 @@ db.trecho_observacoes.aggregate([
   // Junta tudo num único resultado com contagem e somas.
   {
     $group: {
-      _id: null,
-      n: { $sum: 1 },
-      somaMin: { $sum: "$tempoMin" },
-      somaQuadMin: { $sum: { $multiply: [ "$tempoMin", "$tempoMin" ] } },
-      somaKm: { $sum: "$distanciaKm" }
+      _id: null,  // null = um grupo só: soma tudo que passou pelo filtro
+      n: { $sum: 1 },  // conta 1 por observação
+      somaMin: { $sum: "$tempoMin" },  // soma dos tempos de viagem, em minutos
+      somaQuadMin: { $sum: { $multiply: [ "$tempoMin", "$tempoMin" ] } },  // soma de tempo × tempo: é o que permite calcular o desvio padrão depois
+      somaKm: { $sum: "$distanciaKm" }  // soma das distâncias, em km
     }
   },
   // Arredonda as somas, identifica a consulta pela chave do filtro e marca até quando ela
   // vale.
   {
     $project: {
-      _id: { $literal: "<chave do filtro>" },
+      _id: { $literal: "<chave do filtro>" },  // a chave é o identificador do filtro: a mesma consulta cai no mesmo documento
       n: 1,
-      somaMin: { $round: [ "$somaMin", 6 ] },
-      somaQuadMin: { $round: [ "$somaQuadMin", 6 ] },
-      somaKm: { $round: [ "$somaKm", 6 ] },
+      somaMin: { $round: [ "$somaMin", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
+      somaQuadMin: { $round: [ "$somaQuadMin", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
+      somaKm: { $round: [ "$somaKm", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
       filtro: {
         $literal: {
           origem: "BASE-001",
@@ -52,18 +52,18 @@ db.trecho_observacoes.aggregate([
         }
       },
       periodo: { $literal: "relativo" },
-      criadoEm: "$$NOW",
-      expiraEm: { $literal: ISODate("2026-10-23T06:10:00.000Z") }
+      criadoEm: "$$NOW",  // $$NOW = o instante em que o documento é gravado
+      expiraEm: { $literal: ISODate("2026-10-23T06:10:00.000Z") }  // o índice TTL apaga o documento quando chegar nesta data
     }
   },
   // Grava o resultado em consultas_salvas: a mesma consulta substitui a anterior; o índice
   // TTL apaga o documento quando passa do expiraEm.
   {
     $merge: {
-      into: "consultas_salvas",
-      on: "_id",
-      whenMatched: "replace",
-      whenNotMatched: "insert"
+      into: "consultas_salvas",  // collection de destino
+      on: "_id",  // campos que dizem quando é "o mesmo documento"
+      whenMatched: "replace",  // mesma chave: troca o documento inteiro (nunca soma por cima)
+      whenNotMatched: "insert"  // chave nova: insere
     }
   }
 ])
