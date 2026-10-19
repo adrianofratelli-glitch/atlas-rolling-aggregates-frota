@@ -11,6 +11,8 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from zoneinfo import ZoneInfo
+
 from fastapi import Body, FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
@@ -36,6 +38,7 @@ _boot: set[str] = set()
 _reset = {"resetando": False, "etapa": None, "pct": 0.0, "erro": None, "fim": None}
 _trava = threading.Lock()
 RAW = "trecho_observacoes"
+_TZ = ZoneInfo(settings.TZ)
 BASE = job_pipe.COLECAO
 _PRIVADOS = {"owner"}
 
@@ -45,10 +48,12 @@ def agora_utc() -> datetime:
 
 
 def db():
+    """Durante o reset não faz bootstrap: ele recriaria collections no meio do drop/seed."""
     d = get_db(settings.MONGODB_DB)
-    if d.name not in _boot:
-        bootstrap(d)
-        _boot.add(d.name)
+    with _trava:
+        if not _reset["resetando"] and d.name not in _boot:
+            bootstrap(d)
+            _boot.add(d.name)
     return d
 
 
@@ -139,17 +144,39 @@ def opcoes():
 
 # ---- raw --------------------------------------------------------------------
 
+def _hora(x: dict) -> int:
+    return x["observadoEm"].astimezone(_TZ).hour
+
+
 def _amostra(docs: list[dict], n: int = 12) -> list[dict]:
-    """Um doc por dia local (o mais recente do dia), espalhado ao longo do período."""
-    from frota.janela import hoje_local as dia
+    """Até `n` docs variando dia e hora, de forma determinística.
+
+    Um doc por dia local, dias espalhados; o i-ésimo dia fica com o doc cuja hora local é
+    a mais próxima de (i*7)%24. Faltando dias, completa com docs restantes de horas ainda
+    não usadas primeiro.
+    """
     por_dia: dict = {}
     for x in docs:
-        por_dia.setdefault(dia(x["observadoEm"]), x)
+        por_dia.setdefault(hoje_local(x["observadoEm"]), []).append(x)
     dias = sorted(por_dia)
     if len(dias) > n:
         passo = (len(dias) - 1) / (n - 1)
         dias = [dias[round(i * passo)] for i in range(n)]
-    return sorted((por_dia[k] for k in dias), key=lambda x: x["observadoEm"])
+    esc, usados = [], set()
+    for i, k in enumerate(dias):
+        alvo = (i * 7) % 24
+        x = min(por_dia[k], key=lambda y: (min((_hora(y) - alvo) % 24, (alvo - _hora(y)) % 24),
+                                           y["observadoEm"]))
+        esc.append(x)
+        usados.add(id(x))
+    resto = sorted((x for x in docs if id(x) not in usados), key=lambda x: x["observadoEm"])
+    horas = {_hora(x) for x in esc}
+    while len(esc) < n and resto:
+        x = next((y for y in resto if _hora(y) not in horas), resto[0])
+        resto.remove(x)
+        esc.append(x)
+        horas.add(_hora(x))
+    return sorted(esc, key=lambda x: x["observadoEm"])
 
 
 @app.get("/api/raw")
@@ -165,7 +192,7 @@ def raw(origem: str | None = None, destino: str | None = None,
         origem, destino = origem or t["origem"], destino or t["destino"]
     tipo = tipoVeiculo or "CARRETA"
     filtro = {"origem": origem, "destino": destino, "tipoVeiculo": tipo}
-    docs = list(d[RAW].find(filtro).sort("observadoEm", -1).limit(600))
+    docs = list(d[RAW].find(filtro).sort("observadoEm", -1).limit(3000))
     info = d.command("listCollections", filter={"name": RAW})["cursor"]["firstBatch"]
     validator = (info[0].get("options", {}).get("validator") if info else None)
     indices = [{"nome": i["name"], "chave": dict(i["key"]),
@@ -175,7 +202,7 @@ def raw(origem: str | None = None, destino: str | None = None,
                for i in d[RAW].list_indexes()]
     query = {"le": [RAW], "grava": [], "operacao": "find", "operadores": [],
              "mongosh": f"db.{RAW}.find({para_mongosh(filtro)}).sort({{ observadoEm: -1 }})"
-                        f".limit(600)"}
+                        f".limit(3000)"}
     return J({"filtro": filtro, "amostra": _amostra(docs),
               "schema": {"validator": validator, "indices": indices}, "query": query})
 

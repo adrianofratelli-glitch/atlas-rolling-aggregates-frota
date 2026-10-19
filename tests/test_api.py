@@ -97,20 +97,74 @@ def test_reset_409_concorrente(cli, monkeypatch):
     assert cli.post("/api/reset").status_code == 409
 
 
-def test_reset_inicia_e_status(cli, monkeypatch):
+@pytest.fixture
+def reset_limpo(monkeypatch):
+    monkeypatch.setattr(main, "_reset", dict(main._reset))
+
+
+def _esperar(cli):
+    import time
+    for _ in range(100):
+        s = cli.get("/api/reset/status").json()
+        if not s["resetando"]:
+            return s
+        time.sleep(0.05)
+    return s
+
+
+def test_reset_inicia_e_status(cli, reset_limpo, monkeypatch):
     chamadas = []
     monkeypatch.setattr(main.seed_mod, "resetar",
                         lambda db, agora, seed, permitir, progresso: chamadas.append(
                             (db.name, permitir)) or progresso("gerando", 0.5))
     r = cli.post("/api/reset")
     assert r.status_code == 202 and r.json() == {"iniciado": True}
-    for _ in range(100):
-        s = cli.get("/api/reset/status").json()
-        if not s["resetando"]:
-            break
-        import time; time.sleep(0.05)
+    s = _esperar(cli)
     assert s["pct"] == 1.0 and s["erro"] is None and s["fim"]
     assert chamadas == [(settings.MONGODB_TEST_DB, True)]
+
+
+def test_reset_com_erro_mascarado(cli, reset_limpo, monkeypatch):
+    def quebra(*a, **k):
+        raise RuntimeError("falhou em x.mongodb.net:27017")
+    monkeypatch.setattr(main.seed_mod, "resetar", quebra)
+    assert cli.post("/api/reset").status_code == 202
+    s = _esperar(cli)
+    assert s["resetando"] is False and s["erro"] and "mongodb.net" not in s["erro"]
+
+
+def test_estado_responde_durante_reset_sem_bootstrap(cli, reset_limpo, monkeypatch):
+    chamou = []
+    monkeypatch.setattr(main, "bootstrap", lambda d: chamou.append(1))
+    main._boot.clear()
+    monkeypatch.setitem(main._reset, "resetando", True)
+    r = cli.get("/api/estado")
+    assert r.status_code == 200 and r.json()["resetando"] is True
+    assert chamou == []
+
+
+def test_raw_amostra_varia_horas_e_dias(cli):
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    z = ZoneInfo("America/Sao_Paulo")
+    o = next(t for t in cli.get("/api/opcoes").json()["trechos"] if not t["esparso"])
+    am = cli.get("/api/raw", params={"origem": o["origem"], "destino": o["destino"]}).json()["amostra"]
+    ts = [datetime.fromisoformat(a["observadoEm"].replace("Z", "+00:00")).astimezone(z) for a in am]
+    assert len(am) == 12
+    assert len({t.hour for t in ts}) > 6 and len({t.date() for t in ts}) > 6
+
+
+def test_raw_esparso_completa_12(cli, db_sessao):
+    for t in cli.get("/api/opcoes").json()["trechos"]:
+        if not t["esparso"]:
+            continue
+        n = db_sessao.trecho_observacoes.count_documents(
+            {"origem": t["origem"], "destino": t["destino"], "tipoVeiculo": "CARRETA"})
+        if n >= 12:
+            am = cli.get("/api/raw", params={"origem": t["origem"], "destino": t["destino"]}).json()["amostra"]
+            assert len(am) == 12
+            return
+    pytest.skip("sem trecho esparso com 12+ docs no perfil de teste")
 
 
 def test_503_sem_host(cli, monkeypatch):
