@@ -1,0 +1,16 @@
+{
+  "name": "ingestaoSimulada",
+  "type": "SCHEDULED",
+  "disabled": false,
+  "config": {
+    "schedule": "5 * * * *",
+    "skip_catchup_events": true
+  },
+  "event_processors": {
+    "FUNCTION": {
+      "config": {
+        "function_name": "ingerirSimulado"
+      }
+    }
+  }
+}

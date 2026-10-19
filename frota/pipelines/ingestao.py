@@ -14,11 +14,16 @@ DESTINO = "trecho_observacoes"
 CHAVE = ["viagemId", "seq"]
 
 
+def filtro_pendentes(agora: datetime) -> dict:
+    """O que já "aconteceu" e pode sair da fila (usado também pela Function do trigger)."""
+    return {"observadoEm": {"$lt": agora}}
+
+
 def pipeline(agora: datetime, ids: list | None = None) -> list[Estagio]:
     """Com `ids`, move exatamente esses documentos (evita perder os que chegam durante a execução)."""
     if ids is None:
         match = Estagio("Pega da fila só as observações cujo horário já passou.",
-                        {"$match": {"observadoEm": {"$lt": agora}}})
+                        {"$match": filtro_pendentes(agora)})
     else:
         match = Estagio("Pega da fila só as observações já escolhidas (as de horário já passado).",
                         {"$match": {"_id": {"$in": ids}}})

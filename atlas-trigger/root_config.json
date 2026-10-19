@@ -1,0 +1,8 @@
+{
+  "config_version": 20210101,
+  "name": "frota-eta-job",
+  "location": "BR-SP",
+  "deployment_model": "LOCAL",
+  "provider_region": "aws-sa-east-1",
+  "environment": ""
+}

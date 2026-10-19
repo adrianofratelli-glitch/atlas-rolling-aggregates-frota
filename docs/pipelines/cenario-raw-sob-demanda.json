@@ -1,0 +1,224 @@
+{
+  "descricao": "Cenário fora da janela padrão (últimos 30 dias): o mesmo cálculo direto na raw, sem salvar.",
+  "colecao": "trecho_observacoes",
+  "dataRef": "2026-10-22",
+  "estagios": [
+    {
+      "comentario": "Pega as observações da rota e do tipo de veículo no período pedido (o fim fica de fora).",
+      "estagio": {
+        "$match": {
+          "origem": "BASE-001",
+          "destino": "POSTO-11",
+          "tipoVeiculo": "CARRETA",
+          "observadoEm": {
+            "$gte": {
+              "$date": "2026-09-22T03:00:00Z"
+            },
+            "$lt": {
+              "$date": "2026-10-22T03:00:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Descobre o dia da semana (1 = segunda … 7 = domingo) e a hora, no horário de São Paulo.",
+      "estagio": {
+        "$set": {
+          "dow": {
+            "$isoDayOfWeek": {
+              "date": "$observadoEm",
+              "timezone": "America/Sao_Paulo"
+            }
+          },
+          "hora": {
+            "$hour": {
+              "date": "$observadoEm",
+              "timezone": "America/Sao_Paulo"
+            }
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Fica só com os dias da semana e as horas escolhidos.",
+      "estagio": {
+        "$match": {
+          "dow": {
+            "$in": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ]
+          },
+          "hora": {
+            "$in": [
+              6,
+              7,
+              8,
+              9,
+              10,
+              11
+            ]
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Junta tudo num único resultado com contagem e somas.",
+      "estagio": {
+        "$group": {
+          "_id": null,
+          "n": {
+            "$sum": 1
+          },
+          "somaMin": {
+            "$sum": "$tempoMin"
+          },
+          "somaQuadMin": {
+            "$sum": {
+              "$multiply": [
+                "$tempoMin",
+                "$tempoMin"
+              ]
+            }
+          },
+          "somaKm": {
+            "$sum": "$distanciaKm"
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Arredonda as somas.",
+      "estagio": {
+        "$project": {
+          "_id": 0,
+          "n": 1,
+          "somaMin": {
+            "$round": [
+              "$somaMin",
+              6
+            ]
+          },
+          "somaQuadMin": {
+            "$round": [
+              "$somaQuadMin",
+              6
+            ]
+          },
+          "somaKm": {
+            "$round": [
+              "$somaKm",
+              6
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "pipeline": [
+    {
+      "$match": {
+        "origem": "BASE-001",
+        "destino": "POSTO-11",
+        "tipoVeiculo": "CARRETA",
+        "observadoEm": {
+          "$gte": {
+            "$date": "2026-09-22T03:00:00Z"
+          },
+          "$lt": {
+            "$date": "2026-10-22T03:00:00Z"
+          }
+        }
+      }
+    },
+    {
+      "$set": {
+        "dow": {
+          "$isoDayOfWeek": {
+            "date": "$observadoEm",
+            "timezone": "America/Sao_Paulo"
+          }
+        },
+        "hora": {
+          "$hour": {
+            "date": "$observadoEm",
+            "timezone": "America/Sao_Paulo"
+          }
+        }
+      }
+    },
+    {
+      "$match": {
+        "dow": {
+          "$in": [
+            1,
+            2,
+            3,
+            4,
+            5
+          ]
+        },
+        "hora": {
+          "$in": [
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ]
+        }
+      }
+    },
+    {
+      "$group": {
+        "_id": null,
+        "n": {
+          "$sum": 1
+        },
+        "somaMin": {
+          "$sum": "$tempoMin"
+        },
+        "somaQuadMin": {
+          "$sum": {
+            "$multiply": [
+              "$tempoMin",
+              "$tempoMin"
+            ]
+          }
+        },
+        "somaKm": {
+          "$sum": "$distanciaKm"
+        }
+      }
+    },
+    {
+      "$project": {
+        "_id": 0,
+        "n": 1,
+        "somaMin": {
+          "$round": [
+            "$somaMin",
+            6
+          ]
+        },
+        "somaQuadMin": {
+          "$round": [
+            "$somaQuadMin",
+            6
+          ]
+        },
+        "somaKm": {
+          "$round": [
+            "$somaKm",
+            6
+          ]
+        }
+      }
+    }
+  ]
+}

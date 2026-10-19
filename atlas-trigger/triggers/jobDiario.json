@@ -1,0 +1,16 @@
+{
+  "name": "jobDiario",
+  "type": "SCHEDULED",
+  "disabled": false,
+  "config": {
+    "schedule": "10 6 * * *",
+    "skip_catchup_events": true
+  },
+  "event_processors": {
+    "FUNCTION": {
+      "config": {
+        "function_name": "rodarJob"
+      }
+    }
+  }
+}

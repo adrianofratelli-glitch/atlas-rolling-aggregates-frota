@@ -1,0 +1,68 @@
+{
+  "descricao": "Ingestão simulada às 2026-10-22T14:05Z: o que já passou sai da fila e entra na raw ($merge por viagemId + seq).",
+  "colecao": "ingestao_simulada",
+  "dataRef": "2026-10-22",
+  "estagios": [
+    {
+      "comentario": "Pega da fila só as observações cujo horário já passou.",
+      "estagio": {
+        "$match": {
+          "observadoEm": {
+            "$lt": {
+              "$date": "2026-10-22T14:05:00Z"
+            }
+          }
+        }
+      }
+    },
+    {
+      "comentario": "Tira o _id para que cada documento ganhe um novo na collection de destino.",
+      "estagio": {
+        "$project": {
+          "_id": 0
+        }
+      }
+    },
+    {
+      "comentario": "Grava na collection de observações; se a mesma viagem e trecho já estiverem lá, o documento é substituído (não duplica).",
+      "estagio": {
+        "$merge": {
+          "into": "trecho_observacoes",
+          "on": [
+            "viagemId",
+            "seq"
+          ],
+          "whenMatched": "replace",
+          "whenNotMatched": "insert"
+        }
+      }
+    }
+  ],
+  "pipeline": [
+    {
+      "$match": {
+        "observadoEm": {
+          "$lt": {
+            "$date": "2026-10-22T14:05:00Z"
+          }
+        }
+      }
+    },
+    {
+      "$project": {
+        "_id": 0
+      }
+    },
+    {
+      "$merge": {
+        "into": "trecho_observacoes",
+        "on": [
+          "viagemId",
+          "seq"
+        ],
+        "whenMatched": "replace",
+        "whenNotMatched": "insert"
+      }
+    }
+  ]
+}

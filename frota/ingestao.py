@@ -25,7 +25,7 @@ def bloco(agora: datetime) -> dict:
 
 
 def _selecionar(db: Database, agora: datetime) -> list:
-    return [d["_id"] for d in db[pipe.ORIGEM].find({"observadoEm": {"$lt": agora}}, {"_id": 1})]
+    return [d["_id"] for d in db[pipe.ORIGEM].find(pipe.filtro_pendentes(agora), {"_id": 1})]
 
 
 def ingerir(db: Database, agora: datetime) -> dict:
