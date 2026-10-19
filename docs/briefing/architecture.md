@@ -13,16 +13,16 @@ Extraído do código em `frota/`, `jobs/`, `scripts/`, `api/`, `frontend/` e `at
 | `frota/janela.py` | Funções puras: `inicio_dia`, `hoje_local`, `janela_padrao`, `horas_da_faixa` (semiaberta, cruza meia-noite), atalhos Manhã/Tarde/Noite, `proximo_job`, `periodo_para_intervalo` (padrão, datas, últimos N dias). |
 | `frota/pipelines/` | Builders comentados (`Estagio(comentario, estagio)`): `job` (raw → base), `cenario` (`base` e `raw`, com `$merge` opcional em `consultas_salvas`), `ingestao` (fila → raw). |
 | `frota/job.py` | `rodar_job(db, data_ref, origem)`: lê o relógio do servidor (`hello.localTime`), roda o pipeline, limpa `atualizadoEm < inícioDoRun`, registra `job_runs` (erro mascarado). |
-| `frota/cenario.py` | `Filtro` (validação, chave sha1), `consultar`: base pronta com ampliação por poucas amostras, ou sob demanda na raw com leitura/gravação em `consultas_salvas`. |
+| `frota/cenario.py` | `Filtro` (validação, chave sha1, `veiculoId` opcional), `veiculos_por_tipo` (distinct da raw em ordem natural), `consultar`: base pronta (só janela padrão sem veículo) com ampliação por poucas amostras, ou sob demanda na raw com leitura/gravação em `consultas_salvas`. |
 | `frota/ingestao.py` | `ingerir(db, agora)`: escolhe os `_id` já vencidos da fila, `$merge` só deles e apaga só eles. |
 | `frota/previa.py` | Prévia do próximo job (só leitura): dia que entra, dia que sai, chaves que somem. O `$group` das chaves percorre 180 dias de raw (~3,4 s no Atlas); a API guarda esse número em memória por (banco, dataRef, último run ok, tamanho estimado da raw), então a revisita é imediata e a ingestão ou um novo job invalidam. |
 | `frota/operadores.py`, `frota/mongosh.py` | Bloco `query` (lê, grava, mongosh, operadores explicados) e serialização para JSON/mongosh. |
-| `frota/gerador.py`, `frota/seed.py` | Gerador determinístico (perfis `demo` e `teste`, padrões por dia/hora/veículo, trechos esparsos) e `resetar` em torno do instante do clique (raw até agora, 14 dias futuros na fila, job). |
+| `frota/gerador.py`, `frota/seed.py` | Gerador determinístico (perfis `demo` com 15 veículos por tipo e `teste` com 3, padrões por dia/hora/veículo, trechos esparsos) e `resetar` em torno do instante do clique (raw até agora, 14 dias futuros na fila, job). |
 | `jobs/materializar.py` | CLI do job (`--data`, `--db`), origem `cli`. |
 | `scripts/` | `bootstrap_db.py`, `seed.py`, `ingerir.py`, `export_pipelines.py` (docs + Functions), `trigger_deploy.sh`, `limpar_atlas.py`, `ui_smoke.py`, `capturar_prints.py`. |
 | `atlas-trigger/` | App App Services com 2 Scheduled Triggers (`jobDiario` 03:10 SP, `ingestaoSimulada` de hora em hora); Functions geradas por `make pipelines`. Não implantado na demo. |
 | `api/main.py` | FastAPI 8410; único lugar que lê `datetime.now()`; serve `frontend/dist` quando compilado. |
-| `frontend/` | Vite + React 5410, proxy para 8410, uma página com roteiro de 7 passos. Sem lógica de negócio. |
+| `frontend/` | Vite + React 5410, proxy para 8410, uma página com roteiro de 5 passos. Sem lógica de negócio. |
 
 ## Fluxo
 

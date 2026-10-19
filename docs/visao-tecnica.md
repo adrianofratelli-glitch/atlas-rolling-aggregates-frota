@@ -134,7 +134,7 @@ Os builders ficam em `frota/pipelines/` (listas de `Estagio(comentario, estagio)
 |---|---|---|
 | Job diário | `trecho_observacoes` | `$match observadoEm [início, fim)` → `$set dow/hora` (`$isoDayOfWeek`, `$hour`, tz) → `$group` por o/d/tipo/dow/hora (`n`, somas) → `$project` (somas `$round` 6, médias, janela, `dataRef`, `runId`, `atualizadoEm: $$NOW`) → `$merge` em `trecho_media_dow_hora` on a chave única, `replace`/`insert`; depois `deleteMany({atualizadoEm < inícioDoRun})` |
 | Cenário na base | `trecho_media_dow_hora` | `$match {o, d, tipo, dow $in, hora $in}` → `$group` somando `n` e somas, `docs: $sum 1` |
-| Cenário sob demanda | `trecho_observacoes` | `$match o/d/tipo + observadoEm [início, fim)` → `$set dow/hora` → `$match dow/hora` → `$group` → `$project`; se persistir, `$merge` em `consultas_salvas` on `_id`, `replace` |
+| Cenário sob demanda (outro período ou um veículo) | `trecho_observacoes` | `$match o/d/tipo (+ veiculoId) + observadoEm [início, fim)` → `$set dow/hora` → `$match dow/hora` → `$group` → `$project`; se guardar, `$merge` em `consultas_salvas` on `_id`, `replace` |
 | Ingestão simulada | `ingestao_simulada` | `$match _id $in [escolhidos]` → `$project {_id: 0}` → `$merge` em `trecho_observacoes` on `{viagemId, seq}`, `replace`; depois `deleteMany` só dos escolhidos |
 
 ### Por que o job é idempotente e seguro em paralelo
@@ -175,12 +175,12 @@ horário de verão desde 2019), roda o mesmo pipeline e grava `job_runs` com ori
 e roda as Functions no node com `context` falso.
 
 **Na demo os triggers não estão implantados**: o deploy exige chave com Project Owner no
-projeto do cluster. O passo 6 mostra o agendamento planejado e informa que o job roda pelo
+projeto do cluster. O passo 5 mostra o agendamento planejado e informa que o job roda pelo
 botão do passo 3. Implantação: `make trigger-deploy` (ver `atlas-trigger/README.md`).
 
 ## Compatibilidade de operadores
 
-Executado e testado (96 testes) em **MongoDB 8.0.34** (Docker, replica set de 1 nó) e
+Executado e testado (103 testes) em **MongoDB 8.0.34** (Docker, replica set de 1 nó) e
 **MongoDB 9.0.4** (Atlas). As versões mínimas são as da documentação.
 
 | Operador / recurso | Uso | Disponível desde |

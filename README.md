@@ -6,7 +6,8 @@ milliseconds, without computing anything at ETA time?** The window is **D-1 to D
 today is always excluded. A daily job materializes the averages with `$merge` (the
 "materialized view" MongoDB does not ship as a single object), and any combination of
 days of the week, hour range and vehicle type is answered by summing a handful of
-ready documents.
+ready documents. Anything the base cannot answer (another period, one specific vehicle) is
+computed on the raw collection on demand and kept for a while.
 
 ![Step 4: Friday 12h–18h answered from 6 ready documents, with the executed query and the job pipeline that built the base](docs/screenshots/04-consultar-cenarios.png)
 
@@ -15,7 +16,7 @@ ready documents.
 > identity). No customer name, cluster hostname, key or connection string is in this
 > repository.
 
-## The guided demo: one page, seven steps
+## The guided demo: one page, five steps
 
 The UI is a single page with a step rail on the left, the current step in the centre and
 Previous/Next buttons (the rail is also clickable; the URL keeps `#passo=N`). Every step
@@ -28,19 +29,16 @@ for each operator used.
 | 1 | Raw data and schema | 12 observations of one leg and vehicle spread over days and hours; the `$jsonSchema` and the indexes **read from the database**, each with its reason | `GET /api/raw` |
 | 2 | The rule | the 180-day window with today's concrete dates, the key (leg × vehicle × day of week × hour), São Paulo time | `GET /api/estado` |
 | 3 | Build the base | "Rodar job agora": the job pipeline stage by stage, `$merge` highlighted, counters (read, written, removed, time) | `POST /api/job` |
-| 4 | Query scenarios | leg, vehicle, day chips, hour range (Morning 06–12, Afternoon 12–18, Night 18–06), default window; mean ± std dev, km, samples, documents read; badge **"Job diário"** | `POST /api/cenario` |
-| 5 | Outside the base | specific dates or "last N days": computed on the raw now; optional **persist** with a validity (TTL); repeating the query reads the saved result; badge **"Sob demanda"** | `POST /api/cenario` |
-| 6 | When it refreshes | the schedule (03:10 São Paulo), the last runs from `job_runs` and a read-only preview of tomorrow's job: the day that enters, the day that leaves, keys that would disappear | `GET /api/job_runs`, `GET /api/proximo-job` |
-| 7 | Few samples | a deliberately sparse leg: the answer widens step by step and says which level it used, labelled **"rule to validate with the customer"** | `POST /api/cenario` |
+| 4 | Query | one form for every case: origin, destination (only valid ones for the origin), vehicle type, **vehicle** ("all vehicles of the type" or one of its 15), day chips, hour range (Morning 06–12, Afternoon 12–18, Night 18–06) and period (default 180-day window, specific dates, last N days). Default window for the whole type → answered automatically from the ready base, badge **"Job diário"**; anything else → "Calcular" on the raw, badge **"Sob demanda"**, **"guardar o resultado" ticked by default** (validity 1–30 days, or until the next job for relative periods); repeating it reads the saved result. Mean ± std dev, km, samples, documents read; on a sparse leg the base widens and says so, labelled **"rule to validate with the customer"** | `GET /api/opcoes`, `POST /api/cenario` |
+| 5 | When it refreshes | the schedule (03:10 São Paulo), the last runs from `job_runs` and a read-only preview of tomorrow's job: the day that enters, the day that leaves, keys that would disappear | `GET /api/job_runs`, `GET /api/proximo-job` |
 
 ![Step 1: a sample of the raw collection next to its validator and indexes, read from the database](docs/screenshots/01-dado-bruto-e-schema.png)
 
-![Step 5: the same scenario for specific dates, computed on the raw collection and not saved](docs/screenshots/05-fora-da-base.png)
+![Step 4 with one specific vehicle: the default window computed on the raw collection, because the base is per vehicle type](docs/screenshots/04-consultar-veiculo.png)
 
-![Step 6: the schedule, the preview of tomorrow's job and the run history](docs/screenshots/06-quando-atualiza.png)
+![Step 5: the schedule, the preview of tomorrow's job and the run history](docs/screenshots/05-quando-atualiza.png)
 
-More screenshots: [step 3](docs/screenshots/03-gerar-a-base.png) and
-[step 7](docs/screenshots/07-poucas-amostras.png).
+More screenshots: [step 3](docs/screenshots/03-gerar-a-base.png).
 
 ## How it works
 
@@ -74,13 +72,20 @@ flowchart LR
   over at most 7 × 24 documents. Mean = sum / n; standard deviation =
   √(sum of squares / n − mean²). Hour ranges are half-open: Night 18→06 is hours 18–23
   and 0–5.
-- **Any other period** (specific dates, last N days) runs the same computation on the raw
-  collection with the compound index `{origem, destino, tipoVeiculo, observadoEm}`. If the
-  presenter ticks "persist", `$merge` into `consultas_salvas` is the last stage of the
-  same aggregate; the key is a hash of the normalized filter. Absolute periods keep the
-  result for 1–30 days (default 7); relative periods expire at the next job. A TTL index on
-  `expiraEm` deletes it; reads also filter `expiraEm > now` because the TTL monitor runs
-  about once a minute.
+- **The API decides where the answer comes from.** The ready base is used **only** for the
+  default window without a specific vehicle (the base is per vehicle type, never per
+  vehicle). Otherwise: a valid saved result is read; if there is none, the computation runs
+  on the raw collection.
+- **Any other period** (specific dates, last N days) **or one specific vehicle** runs the
+  same computation on the raw collection with the compound index
+  `{origem, destino, tipoVeiculo, observadoEm}` (`veiculoId` is one more equality in the
+  same `$match`; no extra index). With "guardar o resultado" (ticked by default in the
+  UI; the API field `persistir` stays explicit), `$merge` into `consultas_salvas` is the
+  last stage of the same aggregate; the key is a hash of the normalized filter, vehicle
+  included. Absolute periods keep the result for 1–30 days (default 7); relative periods
+  (last N days, or the default window for one vehicle) expire at the next job. A TTL index
+  on `expiraEm` deletes it; reads also filter `expiraEm > now` because the TTL monitor
+  runs about once a minute.
 - **Few samples** (fewer than 5, only on the ready base): requested days and hours → all
   days of the week at the same hours → the whole day on the requested days → no history.
   The answer names the level. The order is a proposal, not a decision.
@@ -125,7 +130,7 @@ runs the Functions in Node with a fake `context`.
 
 **The triggers are not deployed in this demo.** The deploy needs an Atlas key with Project
 Owner on the cluster's project; `make trigger-deploy` stops and explains when the session
-lacks it. Without them, step 6 shows the planned schedule and says that, in this demo,
+lacks it. Without them, step 5 shows the planned schedule and says that, in this demo,
 the job runs from the step-3 button. See [`atlas-trigger/README.md`](atlas-trigger/README.md).
 
 ## Resetting the demo
@@ -161,23 +166,23 @@ host, port or URI.
 
 ## Tests
 
-The same 96 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
+The same 103 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
 portfolio cluster) and **local Docker 8.0.34**.
 
 | File | Covers |
 |---|---|
 | `test_janela.py` | half-open window, today excluded, `$lt`, São Paulo time including a 2018 DST date, hour ranges across midnight, periods, next job |
 | `test_job.py` | today excluded, job idempotent, two overlapping runs lose nothing, a key that left the window is removed, `$isoDayOfWeek` at local midnight, rounding, masked errors in `job_runs` |
-| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, absolute vs relative validity (an absolute period ending today expires at the next job), period without raw data (no `$merge` shown), partially outside retention (warning), raw docs read = first `$match` count, `geradoPor` = latest ok run |
+| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, a specific vehicle goes to the raw even in the default window (key includes it, invalid vehicle → 422, saved until the next job), absolute vs relative validity (an absolute period ending today expires at the next job), period without raw data (no `$merge` shown), partially outside retention (warning), raw docs read = first `$match` count, `geradoPor` = latest ok run |
 | `test_ingestao.py`, `test_previa.py` | ingestion moves only what already happened and never loses arrivals; tomorrow's preview |
-| `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, reset with per-batch progress; validators and indexes read from the database |
+| `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, 15 vehicles per type spread over legs and hours, reset with per-batch progress; validators and indexes read from the database |
 | `test_trigger_export.py` | exported trigger pipelines equal the Python ones; Functions run in Node |
-| `test_api.py`, `test_operadores.py` | route contracts, the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
+| `test_api.py`, `test_operadores.py` | route contracts, vehicles per type in `/api/opcoes`, the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
 
 ## Limitations
 
 - Tested on a shared Atlas cluster (9.0.4) and local MongoDB 8.0; nothing with sharding or
-  with the customer's volume (the demo has ~347 thousand observations over 14 legs).
+  with the customer's volume (the demo has ~347 thousand observations over 14 legs and 15 vehicles per type).
 - The triggers are code-complete and tested offline, but not deployed.
 - Simple mean and population standard deviation, outliers included.
 - The widening order for few samples and the hour shortcuts are proposals to validate.
@@ -189,7 +194,7 @@ portfolio cluster) and **local Docker 8.0.34**.
 Documentation in Portuguese, matching the UI:
 
 - [`docs/visao-tecnica.md`](docs/visao-tecnica.md): data model, indexes, retention, pipelines, compatibility.
-- [`docs/roteiro-demo.md`](docs/roteiro-demo.md): the 7-step demo script.
+- [`docs/roteiro-demo.md`](docs/roteiro-demo.md): the 5-step demo script.
 - [`docs/decisoes-cliente.md`](docs/decisoes-cliente.md): decisions to confirm with the customer.
 - [`docs/consultas.md`](docs/consultas.md): `mongosh` commands with real output.
 - [`docs/pipelines/`](docs/pipelines/): every pipeline, commented, as `.js` and `.json`.

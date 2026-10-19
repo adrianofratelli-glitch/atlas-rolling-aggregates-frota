@@ -3,9 +3,9 @@
 Requer Playwright para Python (não é dependência da POV):
     <python com playwright> scripts/capturar_prints.py [--url http://127.0.0.1:5410/]
 
-Só leitura: navega pelos passos, consulta cenários e abre gavetas. No passo 5 calcula na
-raw **sem** persistir. Nunca clica "Rodar job agora", "Resetar demo" nem "persistir": pode
-rodar contra o banco da demo, mas não durante uma apresentação.
+Só leitura: navega pelos passos, consulta cenários e abre gavetas. No passo 4 calcula um
+veículo na raw **desmarcando** "guardar o resultado". Nunca clica "Rodar job agora" nem
+"Resetar demo": pode rodar contra o banco da demo, mas não durante uma apresentação.
 """
 from __future__ import annotations
 
@@ -62,23 +62,21 @@ with sync_playwright() as p:
     abrir_gaveta(pg)
     foto(pg, "04-consultar-cenarios.png")
 
-    ir(pg, 5)
-    if pg.get_by_label("persistir este resultado").is_checked():
-        falhas.append("passo 5: persistir marcado por padrão; nada foi calculado")
-    else:
-        pg.get_by_role("button", name="Calcular").click()
-        pg.wait_for_selector(".resultado .selo.sob_demanda", timeout=LONGO)
-        pg.wait_for_selector('button:has-text("Calcular"):not([disabled])', timeout=LONGO)
-        foto(pg, "05-fora-da-base.png")
+    # veículo específico: vai à raw; desmarca "guardar" para não escrever na demo
+    pg.locator("select[name=veiculoId]").select_option(index=7)
+    guardar = pg.get_by_label("guardar o resultado")
+    if not guardar.is_checked():
+        falhas.append("passo 4: 'guardar o resultado' deveria vir marcado")
+    guardar.uncheck()
+    pg.get_by_role("button", name="Calcular").click()
+    pg.wait_for_selector(".resultado .selo.sob_demanda", timeout=LONGO)
+    pg.wait_for_selector('button:has-text("Calcular"):not([disabled])', timeout=LONGO)
+    foto(pg, "04-consultar-veiculo.png")
 
-    ir(pg, 6)
+    ir(pg, 5)
     pg.wait_for_selector(".previa", timeout=LONGO)
     pg.wait_for_selector(".cartao table tbody tr", timeout=LONGO)
-    foto(pg, "06-quando-atualiza.png")
-
-    ir(pg, 7)
-    pg.wait_for_selector(".niveis li.ativo", timeout=LONGO)
-    foto(pg, "07-poucas-amostras.png")
+    foto(pg, "05-quando-atualiza.png")
     b.close()
 
 print("\n".join(falhas) if falhas else "ok: prints em docs/screenshots/")

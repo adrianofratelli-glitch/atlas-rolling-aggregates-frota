@@ -1,4 +1,4 @@
-# Roteiro de demo (~10 min, 7 passos)
+# Roteiro de demo (~10 min, 5 passos)
 
 **Na manhã da demo:** abra a UI e clique **Resetar demo** (rodapé do trilho). Sem o
 trigger de ingestão implantado, é o reset que gera a raw até o instante do clique e roda o
@@ -10,14 +10,12 @@ no trilho "base gerada em …" com a data de hoje. Suba com `./start.sh` (ou `ma
 |---|---|---|---|
 | 0–1 | **1 · Dado bruto e schema** | Mostrar a amostra (dias e horas variados) e o schema ao lado. Abrir a gaveta. | Cada trecho percorrido vira uma observação: quando partiu, quanto andou, quanto demorou. Data é BSON Date UTC; o `$jsonSchema` recusa string. Os índices e o porquê de cada um vêm do banco. |
 | 1–2 | **2 · A regra** | Ler as datas da janela. | Média dos últimos 180 dias, D-1 a D-180: hoje fica fora porque o dia não terminou. A chave é trecho × veículo × dia da semana × hora, no horário de São Paulo. Manhã/tarde/noite são só atalhos de faixa. |
-| 2–4 | **3 · Gerar a base** | "Rodar job agora". Percorrer os estágios; parar no `$merge`. Abrir a gaveta. | Um aggregate lê a raw, calcula `$isoDayOfWeek` e `$hour` no fuso, agrupa guardando somas e contagem e grava com `$merge` replace: é a "materialized view". Rodar de novo dá o mesmo resultado. Em produção quem roda é o trigger (passo 6). |
-| 4–6 | **4 · Consultar cenários** | Sexta, Tarde; depois seg–sex, Manhã; trocar o veículo. Abrir a gaveta e "Como essa base foi gerada". | Qualquer combinação soma poucos documentos prontos (sexta à tarde = 6). É isto que a aplicação lê quando o ETA online cai. Média ± desvio porque guardamos a soma dos quadrados. |
-| 6–7 | **5 · Fora da base** | "Datas específicas" (últimas 4 semanas), Calcular. Marcar "persistir", Calcular duas vezes. | Período fora da janela padrão: o mesmo cálculo direto na raw, na hora. Persistindo, o `$merge` grava em `consultas_salvas` com validade; a segunda vez vem "lido do salvo". O TTL apaga sozinho. |
-| 7–8 | **6 · Quando atualiza** | Mostrar agendamento, prévia e histórico. | `$merge` materializa; quem atualiza é o job, não o banco. Em produção: Atlas Scheduled Trigger às 03:10 (código pronto); nesta demo, o botão do passo 3. Amanhã entra o dia de hoje e sai o D-181. |
-| 8–9 | **7 · Poucas amostras** | Mostrar o trecho "poucos dados" e o nível usado. | Com menos de 5 amostras a consulta amplia um degrau por vez e diz qual usou. A ordem é uma proposta para validar com vocês. |
+| 2–4 | **3 · Gerar a base** | "Rodar job agora". Percorrer os estágios; parar no `$merge`. Abrir a gaveta. | Um aggregate lê a raw, calcula `$isoDayOfWeek` e `$hour` no fuso, agrupa guardando somas e contagem e grava com `$merge` replace: é a "materialized view". Rodar de novo dá o mesmo resultado. Em produção quem roda é o trigger (passo 5). |
+| 4–7 | **4 · Consultar** | Janela padrão: sexta, Tarde; depois seg–sex, Manhã; trocar o tipo. Abrir a gaveta e "Como essa base foi gerada". Escolher um **veículo** (ex.: `VEI-CARRETA-7`), Calcular duas vezes. Trocar para "Datas específicas" (últimas 4 semanas), Calcular. Por fim, um destino "poucos dados" com todos os veículos. | Uma tela só; quem decide de onde vem a média é a API. Janela padrão do tipo inteiro: soma poucos documentos prontos (sexta à tarde = 6); é isto que a aplicação lê quando o ETA online cai. A base é por tipo, não por veículo: com um veículo, ou com outro período, o mesmo cálculo roda na raw na hora e, como "guardar o resultado" vem marcado, o `$merge` grava em `consultas_salvas`; a segunda vez vem "lido do salvo". Janela padrão + veículo vale até o próximo job; datas específicas, pela validade escolhida. O TTL apaga sozinho. No trecho com poucos dados a base amplia e diz como (regra para validar com vocês). |
+| 7–9 | **5 · Quando atualiza** | Mostrar agendamento, prévia e histórico. | `$merge` materializa; quem atualiza é o job, não o banco. Em produção: Atlas Scheduled Trigger às 03:10 (código pronto); nesta demo, o botão do passo 3. Amanhã entra o dia de hoje e sai o D-181. |
 | 9–10 | **Decisões** | `docs/decisoes-cliente.md`. | Faixas, mínimo de amostras, hierarquia, janela, retenção, validade do salvo, horário do job, partida vs chegada, identidade dos pontos, tipos de veículo, estatística. O modelo é de referência: adaptar ao cadastro real. |
 
-Persistir no passo 5 grava em `consultas_salvas` do banco da demo; o próximo reset limpa.
+Calcular no passo 4 com "guardar o resultado" marcado (o padrão) grava em `consultas_salvas` do banco da demo; o próximo reset limpa.
 
 ## Perguntas prováveis
 
