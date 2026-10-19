@@ -241,3 +241,15 @@ def test_proximo_job_em_cache(cli, monkeypatch):
     cli.post("/api/job")  # novo run: a base mudou, a prévia recalcula
     cli.get("/api/proximo-job")
     assert len(chamadas) == 2
+
+
+def test_veiculos_cache_sem_corrida(semeado, monkeypatch):
+    class Limpa(dict):
+        def __contains__(self, k):
+            r = super().__contains__(k)
+            self.clear()
+            return r
+    monkeypatch.setattr(main, "_cache_veiculos", Limpa())
+    monkeypatch.setattr(settings, "MONGODB_DB", settings.MONGODB_TEST_DB)
+    a = main._veiculos(semeado)
+    assert main._veiculos(semeado) == a

@@ -52,6 +52,7 @@ _PRIVADOS = {"owner"}
 _cache_previa: dict = {}  # a prévia agrupa 180 dias de raw (segundos no Atlas): ver previa.proximo
 # (banco, runId do último job ok) → veículos por tipo: seed ou job novo (API ou CLI) invalida
 _cache_veiculos: dict = {}
+_trava_veiculos = threading.Lock()
 
 
 def agora_utc() -> datetime:
@@ -152,10 +153,15 @@ def _trechos(d) -> list[dict]:
 def _veiculos(d) -> dict[str, list[str]]:
     run = d.job_runs.find_one({"status": "ok"}, {"runId": 1}, sort=[("iniciadoEm", -1)])
     chave = (d.name, run.get("runId") if run else None)
-    if chave not in _cache_veiculos:
+    with _trava_veiculos:
+        achado = _cache_veiculos.get(chave)
+    if achado is not None:
+        return achado
+    achado = cenario.veiculos_por_tipo(d)
+    with _trava_veiculos:
         _cache_veiculos.clear()  # só a versão atual importa
-        _cache_veiculos[chave] = cenario.veiculos_por_tipo(d)
-    return _cache_veiculos[chave]
+        _cache_veiculos[chave] = achado
+    return achado
 
 
 def _aquecer_veiculos() -> None:
@@ -292,7 +298,8 @@ def _executar_reset(nome: str, agora: datetime) -> None:
         _reset.update(resetando=False, erro=erro, fim=agora_utc(),
                       **({} if erro else {"etapa": "pronto", "pct": 1.0}))
     _boot.clear()
-    _cache_veiculos.clear()
+    with _trava_veiculos:
+        _cache_veiculos.clear()
 
 
 @app.post("/api/reset")

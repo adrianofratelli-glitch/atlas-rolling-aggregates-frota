@@ -58,3 +58,18 @@ def test_chaves_que_somem_usa_celula_completa(db):
     _base(db, 1, 9)
     _base(db, 3, 9)
     assert previa.proximo(db, AGORA)["chavesQueSomem"] == 1
+
+
+class _CacheLimpoNoMeio(dict):
+    """Simula outra thread limpando o cache entre o teste de presença e a leitura."""
+    def __contains__(self, k):
+        r = super().__contains__(k)
+        self.clear()
+        return r
+
+
+def test_previa_cache_sem_corrida(db):
+    seed_mod.resetar(db, AGORA, 1, perfil="teste")
+    cache = _CacheLimpoNoMeio()
+    a = previa.proximo(db, AGORA, cache)
+    assert previa.proximo(db, AGORA, cache) == a

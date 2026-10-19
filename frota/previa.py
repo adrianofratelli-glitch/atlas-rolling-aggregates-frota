@@ -7,6 +7,7 @@ reaproveitada enquanto não mudam o dia de referência, o último job ok nem o t
 """
 from __future__ import annotations
 
+import threading
 from datetime import datetime, timedelta
 
 from pymongo.database import Database
@@ -17,6 +18,7 @@ from frota.pipelines.job import CHAVE, COLECAO
 from frota.settings import JANELA_DIAS
 
 RAW = "trecho_observacoes"
+_trava = threading.Lock()  # cache.clear()/store não pode cruzar com leitura em outra thread
 
 
 def _chaves_na_raw(db: Database, ini: datetime, fim: datetime, data_ref) -> set[tuple]:
@@ -48,13 +50,16 @@ def proximo(db: Database, agora: datetime, cache: dict | None = None) -> dict:
         run = db.job_runs.find_one({"status": "ok"}, {"runId": 1}, sort=[("iniciadoEm", -1)])
         chave = (db.name, data_ref.isoformat(), run and run["runId"],
                  db[RAW].estimated_document_count())
-        if chave in cache:
-            return cache[chave]
+        with _trava:
+            achado = cache.get(chave)
+        if achado is not None:
+            return achado
     r = {"quando": quando, "dataRef": data_ref.isoformat(),
          "entra": {"dia": entra_dia.isoformat(), "observacoes": contar(entra_dia)},
          "sai": {"dia": sai_dia.isoformat(), "observacoes": contar(sai_dia)},
          "chavesQueSomem": _chaves_que_somem(db, data_ref)}
     if cache is not None:
-        cache.clear()  # guarda só a chave vigente
-        cache[chave] = r
+        with _trava:
+            cache.clear()  # guarda só a chave vigente
+            cache[chave] = r
     return r
