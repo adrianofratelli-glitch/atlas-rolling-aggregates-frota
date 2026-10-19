@@ -1,17 +1,15 @@
 # POV — agregados em janela móvel (fallback de ETA para frota)
 PY      ?= .venv/bin/python
 COMPOSE ?= $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo docker-compose)
-PROFILE ?= small
-ASOF    ?=
-DAYS    ?= 1
+DATA    ?=
 DB      ?=
 DBARG    = $(if $(DB),--db $(DB),)
-ASOFARG  = $(if $(ASOF),--asof $(ASOF),)
+DATAARG  = $(if $(DATA),--data $(DATA),)
 
 .PHONY: help venv up down seed ingerir job api ui ui-build test pipelines trigger-deploy limpar-atlas smoke
 
 help:
-	@echo "make up | seed (recria a demo) | ingerir | job ASOF=YYYY-MM-DD"
+	@echo "make up | seed (recria a demo) | ingerir | job [DATA=YYYY-MM-DD]"
 	@echo "make api | ui | ui-build | test | pipelines | trigger-deploy | limpar-atlas [CONFIRMAR=1]"
 
 .venv/bin/python:
@@ -42,7 +40,7 @@ ingerir: venv
 	$(PY) scripts/ingerir.py $(DBARG)
 
 job: venv
-	$(PY) jobs/materializar.py $(ASOFARG) $(DBARG)
+	$(PY) jobs/materializar.py $(DATAARG) $(DBARG)
 
 api: venv
 	$(if $(DB),MONGODB_DB=$(DB),) .venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8410

@@ -110,5 +110,5 @@ echo
 echo "✅ pronto"
 echo "   UI      http://127.0.0.1:$FRONTEND_PORT"
 echo "   API     http://127.0.0.1:$BACKEND_PORT/docs"
-echo "   Banco vazio? make seed PROFILE=small && make job"
+echo "   Banco vazio? clique em Resetar demo na UI (ou make seed, que já roda o job)"
 wait
