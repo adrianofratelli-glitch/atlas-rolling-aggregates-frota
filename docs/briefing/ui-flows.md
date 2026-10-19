@@ -24,7 +24,7 @@ que descreve o fluxo, o que está aceso e os números.
 | 1 | Rastreio, `pontos · trechos`, `trecho_observacoes` |
 | 2 | `trecho_observacoes` → Job |
 | 3 | `trecho_observacoes` → Job → `$merge` → `trecho_media_dow_hora`. "Rodar job agora" dispara uma vez (1,4 s) pontos andando da raw para a base; ao fim, mostra nos nós os números da execução (`lidos` → "N lidas", `gravados` → "N gravadas"). Com `prefers-reduced-motion`, só os números. |
-| 4 | Selo "Job diário": `trecho_media_dow_hora` → ETA. Selo "Sob demanda": `trecho_observacoes` → `consultas_salvas` → ETA. Antes da primeira resposta, os dois ramos em opacidade média. |
+| 4 | Pelo campo `origem` da resposta: `base` → `trecho_media_dow_hora` → ETA; `raw` gravado (`expiraEm`) → `trecho_observacoes` → `consultas_salvas` → ETA; `raw` sem gravar → o mesmo caminho, com `consultas_salvas` parcial (nada foi escrito); `salvo` ("lido do salvo") → só `consultas_salvas` → ETA. Antes da primeira resposta, os dois ramos em opacidade média. |
 | 5 | Job, com o horário em destaque |
 
 | # | Passo | Ação | Rota | Resultado exibido |

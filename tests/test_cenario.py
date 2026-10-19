@@ -130,7 +130,7 @@ def test_sob_demanda_nao_salva_por_padrao(db):
     r = cenario.consultar(db, _filtro(t, periodo={"tipo": "ultimos", "dias": 30}), AGORA)
     assert r["selo"] == "sob_demanda" and r["resultado"]["n"] > 0
     assert r["detalhe"] == "calculado agora na raw (não salvo)"
-    assert r["expiraEm"] is None and r["geradoPor"] is None
+    assert r["origem"] == "raw" and r["expiraEm"] is None and r["geradoPor"] is None
     assert db.consultas_salvas.count_documents({}) == 0
 
 
@@ -141,13 +141,13 @@ def test_persistir_e_ler_do_salvo(db):
     f = _filtro(t, periodo=per, persistir=True, ttlDias=3)
     r1 = cenario.consultar(db, f, AGORA)
     exp = AGORA + timedelta(days=3)
-    assert r1["expiraEm"] == exp
+    assert r1["expiraEm"] == exp and r1["origem"] == "raw"
     assert r1["detalhe"] == f"calculado agora · salvo até {exp.astimezone(cenario._TZ):%d/%m}"
     assert db.consultas_salvas.count_documents({}) == 1
     salvo = db.consultas_salvas.find_one()
     assert salvo["_id"] == f.chave(AGORA) and salvo["periodo"] == "absoluto"
     r2 = cenario.consultar(db, f, AGORA)
-    assert r2["detalhe"].startswith("lido do salvo")
+    assert r2["detalhe"].startswith("lido do salvo") and r2["origem"] == "salvo"
     assert r2["query"]["le"] == ["consultas_salvas"] and r2["query"]["grava"] == []
     assert "db.consultas_salvas.findOne(" in r2["query"]["mongosh"]
     assert all(o["explicacao"] for o in r2["query"]["operadores"])
@@ -229,7 +229,7 @@ def test_chave_estavel():
 def test_query_bloco_cita_colecoes(db):
     t = _regulares(db)[0]
     b = cenario.consultar(db, _filtro(t), AGORA)
-    assert b["query"]["le"] == [BASE] and b["query"]["grava"] == []
+    assert b["query"]["le"] == [BASE] and b["query"]["grava"] == [] and b["origem"] == "base"
     assert b["query"]["mongosh"].startswith(f"db.{BASE}.aggregate([")
     assert b["geradoPor"]["le"] == ["trecho_observacoes"] and b["geradoPor"]["grava"] == [BASE]
     p = cenario.consultar(db, _filtro(t, periodo={"tipo": "ultimos", "dias": 30},

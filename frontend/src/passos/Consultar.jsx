@@ -8,9 +8,16 @@ import MapaFluxo from '../comp/MapaFluxo.jsx'
 
 const RAMO_BASE = ['base', 'eta', 'e-base-eta']
 const RAMO_RAW = ['raw', 'salvas', 'eta', 'e-raw-salvas', 'e-salvas-eta']
-// ramo aceso conforme o selo da resposta; antes da primeira, os dois em opacidade média
-const ramos = (selo) => (selo === 'job_diario' ? { ativo: RAMO_BASE }
-  : selo === 'sob_demanda' ? { ativo: RAMO_RAW } : { parcial: [...RAMO_BASE, ...RAMO_RAW] })
+// Ramo aceso conforme `origem` da resposta: base pronta; lido do salvo (só salvas → ETA);
+// calculado na raw e gravado (ramo inteiro); calculado sem gravar (consultas_salvas fica
+// parcial, nada foi escrito). Antes da primeira resposta, os dois ramos em opacidade média.
+function ramos(r) {
+  if (!r) return { parcial: [...RAMO_BASE, ...RAMO_RAW] }
+  if (r.origem === 'base' || r.selo === 'job_diario') return { ativo: RAMO_BASE }
+  if (r.origem === 'salvo') return { ativo: ['salvas', 'eta', 'e-salvas-eta'] }
+  if (r.expiraEm) return { ativo: RAMO_RAW }
+  return { ativo: ['raw', 'eta', 'e-raw-salvas', 'e-salvas-eta'], parcial: ['salvas'] }
+}
 
 // O detalhe da API já descreve o nível usado ("poucas amostras: ampliado para …",
 // "sem histórico suficiente…"); aqui entra só a etiqueta, para não repetir o texto.
@@ -51,7 +58,7 @@ export default function Consultar({ opcoes, filtro, setFiltro, estado, ocupado }
 
   return (
     <>
-      <MapaFluxo {...ramos(resposta?.selo)} horario={estado.trigger.horarioLocal} />
+      <MapaFluxo {...ramos(resposta)} horario={estado.trigger.horarioLocal} />
       <FiltroCenario valor={filtro} onChange={setFiltro} opcoes={opcoes}>
         <fieldset className="sem-borda">
           <legend>Período</legend>

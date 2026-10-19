@@ -118,6 +118,7 @@ def test_job_proximo_runs(cli):
 def test_cenario_contrato(cli):
     r = cli.post("/api/cenario", json=CEN)
     assert r.status_code == 200 and "query" in r.json()
+    assert r.json()["origem"] in {"base", "raw", "salvo"}
 
 
 def test_cenario_422_sem_dias(cli):

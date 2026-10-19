@@ -160,6 +160,10 @@ Toda rota que executa algo devolve `query`: `{le, grava, operacao, mongosh, oper
 `geradoPor` (o pipeline do último job com status `ok`, com a janela e o `runId` dele). É o
 que a gaveta "Ver query / chamada executada" mostra.
 
+`/api/cenario` também devolve `origem`: `base` (base pronta), `raw` (calculado agora; com
+`expiraEm` preenchido, o resultado foi gravado em `consultas_salvas`) ou `salvo` (lido de
+`consultas_salvas`). O mapa do fluxo do passo 4 acende o ramo por esse campo.
+
 `docsLidos` é a prova de custo: na base, quantos documentos prontos foram somados; na raw,
 quantos documentos passaram pelo primeiro `$match` (rota + período), antes do filtro de dia
 e hora (as `amostras` são o `n` que sobra). O tempo exibido é medido no app e no Atlas é

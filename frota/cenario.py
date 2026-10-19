@@ -151,9 +151,11 @@ def _metricas(doc: dict | None, docs_lidos: int, dias: list[int], horas: list[in
             "docsLidos": docs_lidos, "docsExaminados": docs_examinados, "diasSomados": dias, "horas": horas, "ms": ms}
 
 
-def _resposta(selo: str, detalhe: str, query: dict, *, nivel=None, resultado=None,
+def _resposta(selo: str, detalhe: str, query: dict, *, origem: str, nivel=None, resultado=None,
               aviso=None, expira=None, gerado=None) -> dict:
-    return {"selo": selo, "detalhe": detalhe, "nivel": nivel, "resultado": resultado,
+    """`origem`: de onde veio o número — "base" (pronta), "raw" (calculado agora) ou "salvo"
+    (lido de consultas_salvas). Com "raw", `expiraEm` preenchido = o resultado foi gravado."""
+    return {"selo": selo, "origem": origem, "detalhe": detalhe, "nivel": nivel, "resultado": resultado,
             "aviso": aviso, "expiraEm": expira, "query": query, "geradoPor": gerado}
 
 
@@ -195,11 +197,11 @@ def _da_base(db: Database, f: Filtro, agora: datetime) -> dict:
     query = bloco_query(pl.BASE, comentados(p), [pl.BASE], [])
     gerado = _gerado_por(db, agora)
     if nivel == "sem_historico":
-        return _resposta("job_diario", _DETALHE_BASE[nivel], query, nivel=nivel,
+        return _resposta("job_diario", _DETALHE_BASE[nivel], query, origem="base", nivel=nivel,
                          aviso=f"menos de {MIN_AMOSTRAS} amostras mesmo ampliando",
                          gerado=gerado)
     res = _metricas(doc, int(doc["docs"]), d, h, ms)
-    return _resposta("job_diario", _DETALHE_BASE[nivel], query, nivel=nivel,
+    return _resposta("job_diario", _DETALHE_BASE[nivel], query, origem="base", nivel=nivel,
                      resultado=res, gerado=gerado)
 
 
@@ -222,7 +224,7 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
     if fim <= inicio_raw or ini >= agora:
         # nada roda: o bloco mostra o cálculo sem o $merge, porque nada seria gravado
         query = bloco_query(pl.RAW, comentados(pl.raw(f, ini, fim, horas, None)), [pl.RAW], [])
-        return _resposta("sob_demanda", SEM_RAW, query, aviso=SEM_RAW)
+        return _resposta("sob_demanda", SEM_RAW, query, origem="raw", aviso=SEM_RAW)
     aviso = RAW_PARCIAL if ini < inicio_raw else None
     if f.persistir:
         expira = agora + timedelta(days=f.ttlDias) if tipo == "absoluto" else proximo_job(agora)
@@ -239,6 +241,7 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
         ms = round((time.perf_counter() - t0) * 1000, 1)
         q = _bloco_salvo(chave, agora)
         return _resposta("sob_demanda", f"lido do salvo · expira {_ddmm(salvo['expiraEm'])}", q,
+                         origem="salvo",
                          resultado=_metricas(salvo, 1, dias, horas, ms),
                          expira=salvo["expiraEm"], aviso=aviso)
 
@@ -263,10 +266,10 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
     res = _metricas(doc, lidos, dias, horas, ms, examinados)
     if salvar and doc:
         return _resposta("sob_demanda", f"calculado agora · salvo até {_ddmm(salvar['expiraEm'])}",
-                         query, resultado=res, expira=salvar["expiraEm"], aviso=aviso)
+                         query, origem="raw", resultado=res, expira=salvar["expiraEm"], aviso=aviso)
     detalhe = ("calculado agora na raw (sem amostras, nada salvo)" if salvar
                else "calculado agora na raw (não salvo)")
-    return _resposta("sob_demanda", detalhe, query, resultado=res, aviso=aviso)
+    return _resposta("sob_demanda", detalhe, query, origem="raw", resultado=res, aviso=aviso)
 
 
 def consultar(db: Database, f: Filtro, agora: datetime,

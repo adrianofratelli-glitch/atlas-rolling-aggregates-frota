@@ -12,8 +12,11 @@
 - Step 3: "Rodar job agora" plays a single 1.4 s animation of dots going from the raw to the
   ready base and then shows the run's real numbers on the nodes (read → written). With
   `prefers-reduced-motion`, only the numbers change.
-- Step 4: the map lights the base branch for "Job diário" and the raw → saved branch for
-  "Sob demanda" (both half-lit before the first answer).
+- Step 4: the map lights the branch the number came from, read from a new `origem` field in
+  `/api/cenario` (`base` | `raw` | `salvo`): base → ETA; raw → `consultas_salvas` → ETA when
+  computed and saved; the same path with `consultas_salvas` half-lit when computed but not
+  saved; only `consultas_salvas` → ETA when read from the saved result. Both branches are
+  half-lit before the first answer.
 - Step 1 drawer: new section "Como a ingestão grava (exemplo)" with the ingestion pipeline
   (`$match` → `$project` → `$merge` on `viagemId, seq`). `GET /api/raw` returns it as
   `ingestao` (same `query` block shape).
