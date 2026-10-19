@@ -28,7 +28,9 @@ function Frescor({ estado }) {
   if (estado.trigger?.implantado) {
     return estado.simuladoAte ? <span className="nota">ingestão simulada programada até {ddmm(estado.simuladoAte)}</span> : null
   }
-  return estado.ultimoJob ? <span className="nota">base gerada em {dataHora(estado.ultimoJob.iniciadoEm)}</span> : null
+  if (!estado.ultimoJob) return null
+  const falhou = estado.ultimoErro ? ` · última tentativa falhou (${dataHora(estado.ultimoErro.iniciadoEm)})` : ''
+  return <span className="nota">base gerada em {dataHora(estado.ultimoJob.iniciadoEm)}{falhou}</span>
 }
 
 const passoDaUrl = () => {

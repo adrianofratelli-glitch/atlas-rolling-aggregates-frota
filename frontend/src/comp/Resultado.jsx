@@ -2,6 +2,7 @@ import { dataHora, descreveDias, descreveHoras, int, num } from '../fmt.js'
 import Selo from './Selo.jsx'
 
 // Resposta de /api/cenario: número grande, selo de origem e os contadores que provam o custo.
+// O tempo medido é quase todo ida e volta de rede; a prova de custo é `docs lidos`.
 export default function Resultado({ resposta, carregando, desatualizado }) {
   if (!resposta) {
     return <div className="resultado vazio" aria-live="polite">{carregando ? 'Consultando…' : 'Sem resultado ainda.'}</div>
@@ -25,8 +26,9 @@ export default function Resultado({ resposta, carregando, desatualizado }) {
             <div><dt>amostras</dt><dd>{int(r.n)}</dd></div>
             <div><dt>dias somados</dt><dd>{descreveDias(r.diasSomados)}</dd></div>
             <div><dt>horas</dt><dd>{descreveHoras(r.horas)}</dd></div>
-            <div><dt>docs lidos</dt><dd>{int(r.docsLidos)}</dd></div>
-            <div><dt>tempo</dt><dd>{num(r.ms, 1)} ms</dd></div>
+            <div className="custo"><dt>docs lidos</dt><dd>{int(r.docsLidos)}</dd></div>
+            <div title="Inclui a rede até o banco: no Atlas é quase todo ida e volta. O custo está em docs lidos.">
+              <dt>ida e volta ao banco</dt><dd>{num(r.ms, 1)} ms</dd></div>
           </dl>
           {resposta.aviso && <p className="aviso">{resposta.aviso}</p>}
         </>

@@ -32,6 +32,9 @@ export default function GerarBase({ estado, onMudou }) {
         {!run && ultimo && (
           <span className="nota">Última execução: {dataHora(ultimo.iniciadoEm)} · {int(ultimo.gravados)} médias gravadas</span>
         )}
+        {!run && estado.ultimoErro && (
+          <span className="nota">Tentativa de {dataHora(estado.ultimoErro.iniciadoEm)} falhou; a base continua a da última execução.</span>
+        )}
       </div>
       {erro && <p className="aviso erro" role="alert">{erro}</p>}
       {run && (

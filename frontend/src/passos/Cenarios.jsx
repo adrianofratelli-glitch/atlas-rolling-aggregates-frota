@@ -11,7 +11,7 @@ export default function Cenarios({ opcoes, filtro, setFiltro, estado, ocupado })
       </FiltroCenario>
       {erro && <p className="aviso erro" role="alert">{erro}</p>}
       <Resultado resposta={resposta} carregando={carregando} />
-      <p className="frase">É isto que a aplicação lê quando a RIA cai.</p>
+      <p className="frase">É isto que a aplicação lê quando o serviço de ETA online cai.</p>
       {resposta && <GavetaQuery query={resposta.query} geradoPor={resposta.geradoPor} />}
     </>
   )
