@@ -41,6 +41,7 @@ RAW = "trecho_observacoes"
 _TZ = ZoneInfo(settings.TZ)
 BASE = job_pipe.COLECAO
 _PRIVADOS = {"owner"}
+_cache_previa: dict = {}  # a prévia agrupa 180 dias de raw (segundos no Atlas): ver previa.proximo
 
 
 def agora_utc() -> datetime:
@@ -113,11 +114,14 @@ def estado():
     agora = agora_utc()
     data_ref = hoje_local(agora)
     ini, fim = janela_padrao(data_ref)
-    ultimo = d.job_runs.find_one({}, sort=[("iniciadoEm", -1)])
+    # "base gerada em" vem do último run que deu certo; um erro mais recente vai à parte
+    ultimo = d.job_runs.find_one({"status": "ok"}, sort=[("iniciadoEm", -1)])
+    recente = d.job_runs.find_one({}, sort=[("iniciadoEm", -1)])
+    erro = recente if recente and recente.get("status") != "ok" else None
     hh, mm = settings.JOB_HORA_LOCAL
     return J({"alvo": settings.ALVO, "agora": agora, "dataRef": data_ref.isoformat(),
               "janela": {"inicio": ini, "fim": fim, "dias": settings.JANELA_DIAS},
-              "ultimoJob": ultimo, "simuladoAte": ingestao.simulado_ate(d),
+              "ultimoJob": ultimo, "ultimoErro": erro, "simuladoAte": ingestao.simulado_ate(d),
               "resetando": _resetando(),
               "trigger": {"implantado": settings.ALVO == "atlas"
                           and bool(os.getenv("APPSERVICES_APP_ID", "").strip()),
@@ -232,7 +236,7 @@ def cenario_api(body: dict = Body(...)):
 
 @app.get("/api/proximo-job")
 def proximo_job():
-    return J(previa.proximo(db(), agora_utc()))
+    return J(previa.proximo(db(), agora_utc(), cache=_cache_previa))
 
 
 @app.get("/api/job_runs")

@@ -79,3 +79,17 @@ def test_resetar_popula(db, monkeypatch):
     assert db.trechos.count_documents({}) == r["trechos"]
     assert chamadas == [(hoje_local(AGORA), "reset")] and etapas[-1] == "pronto"
     assert r["simuladoAte"].startswith("2026-11-02")
+
+
+def test_resetar_progresso_por_lote(db, monkeypatch):
+    stub = types.SimpleNamespace(rodar_job=lambda d, ref, origem: None)
+    monkeypatch.setitem(sys.modules, "frota.job", stub)
+    monkeypatch.setattr(frota, "job", stub, raising=False)
+    monkeypatch.setattr(seed_mod, "LOTE", 1_000)  # perfil de teste é pequeno: lotes menores
+    marcas = []
+    seed_mod.resetar(db, AGORA, 1, perfil="teste", progresso=lambda e, p: marcas.append((e, p)))
+    pcts = [p for e, p in marcas if e == "inserindo"]
+    assert len(pcts) > 10  # um aviso por lote, não só no começo e no fim
+    assert pcts == sorted(pcts) and pcts[0] >= 0.3 and pcts[-1] == pytest.approx(0.85)
+    assert max(b - a for a, b in zip(pcts, pcts[1:])) < 0.06
+    assert [p for _, p in marcas] == sorted(p for _, p in marcas)

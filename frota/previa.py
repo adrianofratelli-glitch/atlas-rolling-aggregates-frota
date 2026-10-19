@@ -1,6 +1,9 @@
 """Prévia do próximo job diário, só leitura: o que entra e o que sai da janela.
 
 Nada aqui escreve: são `count_documents` e um `$group` sobre a raw. `agora` por parâmetro.
+O `$group` percorre 180 dias de raw (segundos no Atlas); com `cache`, a prévia é
+reaproveitada enquanto não mudam o dia de referência, o último job ok nem o tamanho da raw
+(a ingestão de hora em hora, o TTL e o reset mudam a chave).
 """
 from __future__ import annotations
 
@@ -24,7 +27,15 @@ def _chaves_na_raw(db: Database, ini: datetime, fim: datetime, data_ref) -> set[
     return {tuple(d["_id"][c] for c in CHAVE) for d in db[RAW].aggregate(pipe)}
 
 
-def proximo(db: Database, agora: datetime) -> dict:
+def _chaves_que_somem(db: Database, data_ref) -> int:
+    ini, fim = inicio_dia(data_ref - timedelta(days=JANELA_DIAS)), inicio_dia(data_ref)
+    com_dado = _chaves_na_raw(db, ini, fim, data_ref)
+    base = {tuple(d["_id"][c] for c in CHAVE)
+            for d in db[COLECAO].aggregate([{"$group": {"_id": {c: f"${c}" for c in CHAVE}}}])}
+    return len(base - com_dado)
+
+
+def proximo(db: Database, agora: datetime, cache: dict | None = None) -> dict:
     quando = proximo_job(agora)
     data_ref = hoje_local(quando)  # o job de amanhã fecha o dia anterior
     entra_dia = data_ref - timedelta(days=1)
@@ -33,11 +44,17 @@ def proximo(db: Database, agora: datetime) -> dict:
     def contar(d):
         return db[RAW].count_documents({"observadoEm": {"$gte": inicio_dia(d), "$lt": inicio_dia(d + timedelta(days=1))}})
 
-    ini, fim = inicio_dia(data_ref - timedelta(days=JANELA_DIAS)), inicio_dia(data_ref)
-    com_dado = _chaves_na_raw(db, ini, fim, data_ref)
-    base = {tuple(d["_id"][c] for c in CHAVE)
-            for d in db[COLECAO].aggregate([{"$group": {"_id": {c: f"${c}" for c in CHAVE}}}])}
-    return {"quando": quando, "dataRef": data_ref.isoformat(),
-            "entra": {"dia": entra_dia.isoformat(), "observacoes": contar(entra_dia)},
-            "sai": {"dia": sai_dia.isoformat(), "observacoes": contar(sai_dia)},
-            "chavesQueSomem": len(base - com_dado)}
+    if cache is not None:
+        run = db.job_runs.find_one({"status": "ok"}, {"runId": 1}, sort=[("iniciadoEm", -1)])
+        chave = (db.name, data_ref.isoformat(), run and run["runId"],
+                 db[RAW].estimated_document_count())
+        if chave in cache:
+            return cache[chave]
+    r = {"quando": quando, "dataRef": data_ref.isoformat(),
+         "entra": {"dia": entra_dia.isoformat(), "observacoes": contar(entra_dia)},
+         "sai": {"dia": sai_dia.isoformat(), "observacoes": contar(sai_dia)},
+         "chavesQueSomem": _chaves_que_somem(db, data_ref)}
+    if cache is not None:
+        cache.clear()  # guarda só a chave vigente
+        cache[chave] = r
+    return r

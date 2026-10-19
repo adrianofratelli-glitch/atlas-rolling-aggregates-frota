@@ -190,6 +190,9 @@ def test_periodo_sem_raw(db):
         r = cenario.consultar(db, _filtro(t, periodo=per, persistir=True), AGORA)
         assert r["aviso"] == "sem dados brutos para esse período"
         assert r["resultado"] is None
+        # nada rodou: o bloco mostrado não pode prometer gravação
+        assert r["query"]["grava"] == [] and "$merge" not in r["query"]["mongosh"]
+        assert "$merge" not in {o["op"] for o in r["query"]["operadores"]}
     assert db.consultas_salvas.count_documents({}) == 0
 
 
@@ -197,6 +200,10 @@ def test_periodo_parcial_calcula(db):
     t = _regulares(db)[0]
     per = {"tipo": "datas", "de": "2020-01-01", "ate": (HOJE - timedelta(days=1)).isoformat()}
     r = cenario.consultar(db, _filtro(t, periodo=per), AGORA)
+    assert r["aviso"] == "parte do período não tem mais dados brutos"
+    assert r["resultado"]["n"] > 0
+    # período inteiro dentro da retenção: sem aviso
+    r = cenario.consultar(db, _filtro(t, periodo={"tipo": "ultimos", "dias": 200}), AGORA)
     assert r["aviso"] is None and r["resultado"]["n"] > 0
 
 
@@ -233,3 +240,48 @@ def test_query_bloco_cita_colecoes(db):
     assert "$merge" in {o["op"] for o in p["query"]["operadores"]}
     n = cenario.consultar(db, _filtro(t, periodo={"tipo": "ultimos", "dias": 29}), AGORA)
     assert n["query"]["grava"] == [] and "$merge" not in n["query"]["mongosh"]
+
+
+def test_docs_lidos_raw_conta_o_primeiro_match(db):
+    t = _regulares(db)[0]
+    f = _filtro(t, dias=[2], hi=7, hf=9, periodo={"tipo": "ultimos", "dias": 30})
+    r = cenario.consultar(db, f, AGORA)
+    ini, fim, _ = cenario.periodo_para_intervalo(f.periodo, AGORA)
+    lidos = db.trecho_observacoes.count_documents(
+        {"origem": t["origem"], "destino": t["destino"], "tipoVeiculo": "TRUCK",
+         "observadoEm": {"$gte": ini, "$lt": fim}})
+    res = r["resultado"]
+    assert res["docsLidos"] == lidos and lidos > res["n"] > 0
+    # persistido: mesmo número de docs lidos na raw
+    r2 = cenario.consultar(db, _filtro(t, dias=[2], hi=7, hf=9, persistir=True,
+                                       periodo={"tipo": "ultimos", "dias": 30}), AGORA)
+    assert r2["resultado"]["docsLidos"] == lidos
+
+
+def test_absoluto_ate_hoje_expira_no_proximo_job(db):
+    t = _regulares(db)[0]
+    per = {"tipo": "datas", "de": (HOJE - timedelta(days=5)).isoformat(), "ate": HOJE.isoformat()}
+    r = cenario.consultar(db, _filtro(t, periodo=per, persistir=True, ttlDias=3), AGORA)
+    assert r["expiraEm"] == proximo_job(AGORA)
+    assert db.consultas_salvas.find_one()["expiraEm"] == proximo_job(AGORA)
+
+
+def test_gerado_por_usa_ultimo_run_ok(db):
+    ontem = HOJE - timedelta(days=1)
+    ini, fim = janela_padrao(ontem)
+    depois = AGORA + timedelta(hours=1)
+    db.job_runs.insert_many([
+        {"_id": "run-ok-teste", "runId": "run-ok-teste", "origem": "cli", "status": "ok",
+         "dataRef": ontem.isoformat(), "iniciadoEm": depois, "janelaInicio": ini,
+         "janelaFim": fim},
+        {"_id": "run-erro-teste", "runId": "run-erro-teste", "origem": "cli",
+         "status": "erro", "dataRef": HOJE.isoformat(), "iniciadoEm": depois + timedelta(hours=1),
+         "erro": "x"}])
+    try:
+        g = cenario.consultar(db, _filtro(_regulares(db)[0]), AGORA)["geradoPor"]
+        assert "run-ok-teste" in g["mongosh"] and "run-erro-teste" not in g["mongosh"]
+        assert "pendente" not in g["mongosh"]
+        assert ini.strftime("%Y-%m-%dT%H:%M") in g["mongosh"]
+        assert ontem.isoformat() in g["mongosh"]
+    finally:
+        db.job_runs.delete_many({"_id": {"$in": ["run-ok-teste", "run-erro-teste"]}})

@@ -18,11 +18,8 @@ from .schemas import VALIDATORS
 from .settings import DIAS_SIMULADOS
 
 LOTE = 5_000
-
-
-def _inserir(coll, docs: list[dict]) -> None:
-    for i in range(0, len(docs), LOTE):
-        coll.insert_many(docs[i:i + LOTE], ordered=False)
+# a inserção é a etapa longa do reset: o progresso anda de 30% a 85% lote a lote
+PCT_INSERCAO = (0.3, 0.85)
 
 
 def resetar(db: Database, agora: datetime, seed: int, permitir: bool = False,
@@ -36,12 +33,18 @@ def resetar(db: Database, agora: datetime, seed: int, permitir: bool = False,
     bootstrap(db)
     p("gerando", 0.1)
     g = gerar(agora, seed, perfil)
-    p("inserindo", 0.3)
-    _inserir(db.pontos, g["pontos"])
-    _inserir(db.trechos, g["trechos"])
-    _inserir(db.trecho_observacoes, g["observacoes"])
-    p("inserindo", 0.8)
-    _inserir(db.ingestao_simulada, g["futuras"])
+    p("inserindo", PCT_INSERCAO[0])
+    lotes = [(db[nome], g[chave][i:i + LOTE])
+             for nome, chave in (("pontos", "pontos"), ("trechos", "trechos"),
+                                 ("trecho_observacoes", "observacoes"),
+                                 ("ingestao_simulada", "futuras"))
+             for i in range(0, len(g[chave]), LOTE)]
+    total, feitos = sum(len(docs) for _, docs in lotes), 0
+    ini_pct, fim_pct = PCT_INSERCAO
+    for coll, docs in lotes:
+        coll.insert_many(docs, ordered=False)
+        feitos += len(docs)
+        p("inserindo", ini_pct + (fim_pct - ini_pct) * feitos / total)
     p("job", 0.9)
     from . import job  # import tardio: o job é da etapa seguinte
     job.rodar_job(db, hoje_local(agora), origem="reset")

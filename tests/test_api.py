@@ -175,3 +175,34 @@ def test_503_sem_host(cli, monkeypatch):
     assert r.status_code == 503
     assert "mongodb.net" not in r.text
     assert r.json()["acao"] == "verifique a conexão com o MongoDB"
+
+
+def test_estado_ultimo_job_ok_e_erro_separado(cli, db_sessao):
+    from datetime import timedelta
+    ok = db_sessao.job_runs.find_one({"status": "ok"}, sort=[("iniciadoEm", -1)])
+    e = cli.get("/api/estado").json()
+    assert e["ultimoJob"]["runId"] == ok["runId"] and e["ultimoErro"] is None
+    db_sessao.job_runs.insert_one({"_id": "run-erro-api", "runId": "run-erro-api",
+                                   "origem": "cli", "status": "erro", "erro": "falhou",
+                                   "dataRef": ok["dataRef"],
+                                   "iniciadoEm": ok["iniciadoEm"] + timedelta(minutes=5)})
+    try:
+        e = cli.get("/api/estado").json()
+        assert e["ultimoJob"]["runId"] == ok["runId"] and e["ultimoJob"]["status"] == "ok"
+        assert e["ultimoErro"]["runId"] == "run-erro-api" and e["ultimoErro"]["erro"] == "falhou"
+    finally:
+        db_sessao.job_runs.delete_one({"_id": "run-erro-api"})
+
+
+def test_proximo_job_em_cache(cli, monkeypatch):
+    chamadas = []
+    original = main.previa._chaves_na_raw
+    monkeypatch.setattr(main.previa, "_chaves_na_raw",
+                        lambda *a: chamadas.append(1) or original(*a))
+    main._cache_previa.clear()
+    a = cli.get("/api/proximo-job").json()
+    b = cli.get("/api/proximo-job").json()
+    assert a == b and len(chamadas) == 1
+    cli.post("/api/job")  # novo run: a base mudou, a prévia recalcula
+    cli.get("/api/proximo-job")
+    assert len(chamadas) == 2

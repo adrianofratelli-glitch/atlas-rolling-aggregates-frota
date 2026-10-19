@@ -13,7 +13,7 @@ import json
 import math
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from pymongo.database import Database
@@ -33,6 +33,7 @@ _TZ = ZoneInfo(TZ)
 TODOS_OS_DIAS = list(range(1, 8))
 DIA_INTEIRO = list(range(24))
 SEM_RAW = "sem dados brutos para esse período"
+RAW_PARCIAL = "parte do período não tem mais dados brutos"
 # instante qualquer: `validar` só confere a forma do período (datas e "ultimos" não dependem dele)
 _QUALQUER = datetime(2000, 1, 1, tzinfo=UTC)
 
@@ -126,12 +127,16 @@ def _resposta(selo: str, detalhe: str, query: dict, *, nivel=None, resultado=Non
 
 
 def _gerado_por(db: Database, agora: datetime) -> dict:
-    """O pipeline do job que produziu a base desta janela padrão."""
-    hoje = hoje_local(agora)
-    ini, fim = janela_padrao(hoje)
-    run = db.job_runs.find_one({"dataRef": hoje.isoformat(), "status": "ok"},
-                               sort=[("iniciadoEm", -1)])
-    p = job_pl.pipeline(ini, fim, hoje, run["runId"] if run else "pendente")
+    """O pipeline do último job que deu certo: é ele que produziu a base que está lá."""
+    run = db.job_runs.find_one({"status": "ok"}, sort=[("iniciadoEm", -1)])
+    if run:
+        ref = date.fromisoformat(run["dataRef"])
+        ini, fim = janela_padrao(ref)
+        p = job_pl.pipeline(ini, fim, ref, run["runId"])
+    else:
+        hoje = hoje_local(agora)
+        ini, fim = janela_padrao(hoje)
+        p = job_pl.pipeline(ini, fim, hoje, "pendente")
     return bloco_query(pl.RAW, comentados(p), [pl.RAW], [job_pl.COLECAO])
 
 
@@ -183,14 +188,19 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
     inicio_raw = inicio_dia(hoje_local(agora) - timedelta(days=TTL_RAW_DIAS))
     chave = f.chave(agora)
     salvar = None
+    if fim <= inicio_raw or ini >= agora:
+        # nada roda: o bloco mostra o cálculo sem o $merge, porque nada seria gravado
+        query = bloco_query(pl.RAW, comentados(pl.raw(f, ini, fim, horas, None)), [pl.RAW], [])
+        return _resposta("sob_demanda", SEM_RAW, query, aviso=SEM_RAW)
+    aviso = RAW_PARCIAL if ini < inicio_raw else None
     if f.persistir:
         expira = agora + timedelta(days=f.ttlDias) if tipo == "absoluto" else proximo_job(agora)
+        if fim > agora:  # período que inclui hoje ainda cresce: vale só até o próximo job
+            expira = min(expira, proximo_job(agora))
         salvar = {"_id": chave, "periodo": tipo, "expiraEm": expira}
     p = pl.raw(f, ini, fim, horas, salvar)
     grava = [pl.SALVOS] if salvar else []
     query = bloco_query(pl.RAW, comentados(p), [pl.RAW], grava)
-    if fim <= inicio_raw or ini >= agora:
-        return _resposta("sob_demanda", SEM_RAW, query, aviso=SEM_RAW)
 
     t0 = time.perf_counter()
     salvo = db[pl.SALVOS].find_one({"_id": chave, "expiraEm": {"$gt": agora}})
@@ -199,7 +209,7 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
         q = _bloco_salvo(chave, agora)
         return _resposta("sob_demanda", f"lido do salvo · expira {_ddmm(salvo['expiraEm'])}", q,
                          resultado=_metricas(salvo, 1, dias, horas, ms),
-                         expira=salvo["expiraEm"])
+                         expira=salvo["expiraEm"], aviso=aviso)
 
     cursor = db[pl.RAW].aggregate(estagios(p), allowDiskUse=True)
     if salvar:
@@ -209,13 +219,16 @@ def _sob_demanda(db: Database, f: Filtro, agora: datetime) -> dict:
     else:
         doc = next(cursor, None)
     ms = round((time.perf_counter() - t0) * 1000, 1)
-    res = _metricas(doc, int(doc["n"]) if doc else 0, dias, horas, ms)
+    # docs lidos = o que passou pelo primeiro $match (rota + período), antes do filtro de
+    # dia/hora: é o custo real de ler a raw. `n` continua sendo as amostras que sobraram.
+    lidos = db[pl.RAW].count_documents(p[0].estagio["$match"])
+    res = _metricas(doc, lidos, dias, horas, ms)
     if salvar and doc:
         return _resposta("sob_demanda", f"calculado agora · salvo até {_ddmm(salvar['expiraEm'])}",
-                         query, resultado=res, expira=salvar["expiraEm"])
+                         query, resultado=res, expira=salvar["expiraEm"], aviso=aviso)
     detalhe = ("calculado agora na raw (sem amostras, nada salvo)" if salvar
                else "calculado agora na raw (não salvo)")
-    return _resposta("sob_demanda", detalhe, query, resultado=res)
+    return _resposta("sob_demanda", detalhe, query, resultado=res, aviso=aviso)
 
 
 def consultar(db: Database, f: Filtro, agora: datetime) -> dict:
