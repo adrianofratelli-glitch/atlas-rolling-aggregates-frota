@@ -11,8 +11,14 @@
   Function the customer would deploy (`GET /api/trigger-script`). The Function file now lists,
   in plain Portuguese, what each pipeline stage does.
 - **Commented queries**: lines of the shown mongosh queries get a short `//` note on the right
-  (`$group` sums, `$round`, `$$NOW`, `whenMatched: "replace"`…) and a footer explains that the
-  aggregate returns only sums and how mean and standard deviation are computed from them.
+  (`$group` sums, `$round`, `$$NOW`, `whenMatched: "replace"`…) and a footer explains why
+  the base keeps sums instead of only the mean.
+- **The estimate is computed inside the aggregate**: the cenário pipelines end with a `$project`
+  that calculates `mediaMin`, `desvioMin` (`$sqrt` of the mean of squares minus the square of
+  the mean, with `$max(0, …)` against rounding) and `mediaKm` with `$divide`, `$subtract`,
+  `$pow`. Python no longer does the maths; it only reads the result (saved queries from the
+  previous version, which hold only sums, are still handled). Saved queries now also store the
+  three estimates.
 - **N × N mesh**: 4 bases (adds São José dos Campos) and 12 stations; every base serves every
   station and each station returns to its base: 60 legs (was 14). Legs over 120 km only have
   CARRETA and BITREM (`tiposVeiculo` on `trechos`), the type dropdown follows the chosen leg.

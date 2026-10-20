@@ -44,7 +44,7 @@ db.trecho_observacoes.aggregate([
       somaMin: { $round: [ "$somaMin", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
       somaQuadMin: { $round: [ "$somaQuadMin", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
       somaKm: { $round: [ "$somaKm", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
-      mediaMin: { $divide: [ "$somaMin", "$n" ] },  // média = soma ÷ quantidade de observações
+      mediaMin: { $divide: [ "$somaMin", "$n" ] },  // média do tempo (min) = somaMin ÷ n
       mediaKm: { $divide: [ "$somaKm", "$n" ] },  // média = soma ÷ quantidade de observações
       janelaInicio: { $literal: ISODate("2026-04-25T03:00:00.000Z") },  // carimbo desta execução, gravado como está
       janelaFim: { $literal: ISODate("2026-10-22T03:00:00.000Z") },  // carimbo desta execução, gravado como está

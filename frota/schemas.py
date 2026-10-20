@@ -62,6 +62,7 @@ VALIDATORS: dict[str, dict] = {
             "_id": {"bsonType": "string"}, "filtro": {"bsonType": "object"},
             "n": {**INT, "minimum": 0},
             "somaMin": NUM_NAO_NEG, "somaQuadMin": NUM_NAO_NEG, "somaKm": NUM_NAO_NEG,
+            "mediaMin": NUM_NAO_NEG, "desvioMin": NUM_NAO_NEG, "mediaKm": NUM_NAO_NEG,
             "periodo": {"enum": ["absoluto", "relativo"]},
             "criadoEm": DATA, "expiraEm": DATA,
         }),

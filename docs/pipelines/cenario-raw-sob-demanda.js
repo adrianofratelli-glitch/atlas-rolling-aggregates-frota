@@ -30,14 +30,30 @@ db.trecho_observacoes.aggregate([
       somaKm: { $sum: "$distanciaKm" }  // soma das distâncias, em km
     }
   },
-  // Arredonda as somas.
+  // Arredonda as somas e calcula a estimativa: média e desvio padrão do tempo e média de
+  // km.
   {
     $project: {
       _id: 0,  // 0 = não devolve o _id
       n: 1,
       somaMin: { $round: [ "$somaMin", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
       somaQuadMin: { $round: [ "$somaQuadMin", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
-      somaKm: { $round: [ "$somaKm", 6 ] }  // arredonda para 6 casas (tira ruído de ponto flutuante)
+      somaKm: { $round: [ "$somaKm", 6 ] },  // arredonda para 6 casas (tira ruído de ponto flutuante)
+      mediaMin: { $divide: [ "$somaMin", "$n" ] },  // média do tempo (min) = somaMin ÷ n
+      desvioMin: {  // desvio padrão = raiz( média dos quadrados − quadrado da média ); $max(0, …) evita raiz de negativo por arredondamento
+        $sqrt: {
+          $max: [
+            0,
+            {
+              $subtract: [
+                { $divide: [ "$somaQuadMin", "$n" ] },
+                { $pow: [ { $divide: [ "$somaMin", "$n" ] }, 2 ] }
+              ]
+            }
+          ]
+        }
+      },
+      mediaKm: { $divide: [ "$somaKm", "$n" ] }  // média = soma ÷ quantidade de observações
     }
   }
 ])

@@ -21,6 +21,19 @@ if TYPE_CHECKING:
 RAW = "trecho_observacoes"
 SALVOS = "consultas_salvas"
 
+# Média e desvio padrão calculados no próprio aggregate, a partir das somas:
+#   média  = soma / n          desvio = raiz( soma dos quadrados / n  -  média² )
+# `$max` com 0 evita raiz de número negativo por erro de arredondamento.
+def _estimativas() -> dict:
+    media = {"$divide": ["$somaMin", "$n"]}
+    return {
+        "mediaMin": media,
+        "desvioMin": {"$sqrt": {"$max": [0, {"$subtract": [
+            {"$divide": ["$somaQuadMin", "$n"]}, {"$pow": [media, 2]}]}]}},
+        "mediaKm": {"$divide": ["$somaKm", "$n"]},
+    }
+
+
 _SOMAS = {"somaMin": {"$sum": "$tempoMin"},
           "somaQuadMin": {"$sum": {"$multiply": ["$tempoMin", "$tempoMin"]}},
           "somaKm": {"$sum": "$distanciaKm"}}
@@ -40,6 +53,10 @@ def base(f: "Filtro", dias: list[int], horas: list[int]) -> list[Estagio]:
                 {"$group": {"_id": None, "n": {"$sum": "$n"}, "somaMin": {"$sum": "$somaMin"},
                             "somaQuadMin": {"$sum": "$somaQuadMin"},
                             "somaKm": {"$sum": "$somaKm"}, "docs": {"$sum": 1}}}),
+        Estagio("Calcula a estimativa: média do tempo (soma ÷ quantidade), desvio padrão "
+                "(raiz da média dos quadrados menos o quadrado da média) e média de km.",
+                {"$project": {"_id": 0, "n": 1, "docs": 1, "somaMin": 1, "somaKm": 1,
+                              **_estimativas()}}),
     ]
 
 
@@ -64,7 +81,8 @@ def raw(f: "Filtro", inicio: datetime, fim: datetime, horas: list[int],
             "n": 1,
             "somaMin": {"$round": ["$somaMin", 6]},
             "somaQuadMin": {"$round": ["$somaQuadMin", 6]},
-            "somaKm": {"$round": ["$somaKm", 6]}}
+            "somaKm": {"$round": ["$somaKm", 6]},
+            **_estimativas()}
     if salvar_em:
         proj.update({
             "filtro": {"$literal": f.descricao()},
@@ -72,8 +90,9 @@ def raw(f: "Filtro", inicio: datetime, fim: datetime, horas: list[int],
             "criadoEm": "$$NOW",
             "expiraEm": {"$literal": salvar_em["expiraEm"]},
         })
-    p.append(Estagio("Arredonda as somas" + (", identifica a consulta pela chave do filtro e "
-                                             "marca até quando ela vale." if salvar_em else "."),
+    p.append(Estagio("Arredonda as somas e calcula a estimativa: média e desvio padrão do tempo "
+                     "e média de km" + (", identifica a consulta pela chave do filtro e marca "
+                                        "até quando ela vale." if salvar_em else "."),
                      {"$project": proj}))
     if salvar_em:
         p.append(Estagio("Grava o resultado em consultas_salvas: a mesma consulta substitui a "

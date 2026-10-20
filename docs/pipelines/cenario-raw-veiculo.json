@@ -93,7 +93,7 @@
       }
     },
     {
-      "comentario": "Arredonda as somas, identifica a consulta pela chave do filtro e marca até quando ela vale.",
+      "comentario": "Arredonda as somas e calcula a estimativa: média e desvio padrão do tempo e média de km, identifica a consulta pela chave do filtro e marca até quando ela vale.",
       "estagio": {
         "$project": {
           "_id": {
@@ -116,6 +116,46 @@
             "$round": [
               "$somaKm",
               6
+            ]
+          },
+          "mediaMin": {
+            "$divide": [
+              "$somaMin",
+              "$n"
+            ]
+          },
+          "desvioMin": {
+            "$sqrt": {
+              "$max": [
+                0,
+                {
+                  "$subtract": [
+                    {
+                      "$divide": [
+                        "$somaQuadMin",
+                        "$n"
+                      ]
+                    },
+                    {
+                      "$pow": [
+                        {
+                          "$divide": [
+                            "$somaMin",
+                            "$n"
+                          ]
+                        },
+                        2
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mediaKm": {
+            "$divide": [
+              "$somaKm",
+              "$n"
             ]
           },
           "filtro": {
@@ -268,6 +308,46 @@
           "$round": [
             "$somaKm",
             6
+          ]
+        },
+        "mediaMin": {
+          "$divide": [
+            "$somaMin",
+            "$n"
+          ]
+        },
+        "desvioMin": {
+          "$sqrt": {
+            "$max": [
+              0,
+              {
+                "$subtract": [
+                  {
+                    "$divide": [
+                      "$somaQuadMin",
+                      "$n"
+                    ]
+                  },
+                  {
+                    "$pow": [
+                      {
+                        "$divide": [
+                          "$somaMin",
+                          "$n"
+                        ]
+                      },
+                      2
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "mediaKm": {
+          "$divide": [
+            "$somaKm",
+            "$n"
           ]
         },
         "filtro": {

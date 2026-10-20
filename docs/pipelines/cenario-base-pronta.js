@@ -22,5 +22,31 @@ db.trecho_media_dow_hora.aggregate([
       somaKm: { $sum: "$somaKm" },  // soma das distâncias, em km
       docs: { $sum: 1 }  // quantos documentos prontos entraram na conta
     }
+  },
+  // Calcula a estimativa: média do tempo (soma ÷ quantidade), desvio padrão (raiz da média
+  // dos quadrados menos o quadrado da média) e média de km.
+  {
+    $project: {
+      _id: 0,  // 0 = não devolve o _id
+      n: 1,
+      docs: 1,
+      somaMin: 1,
+      somaKm: 1,
+      mediaMin: { $divide: [ "$somaMin", "$n" ] },  // média do tempo (min) = somaMin ÷ n
+      desvioMin: {  // desvio padrão = raiz( média dos quadrados − quadrado da média ); $max(0, …) evita raiz de negativo por arredondamento
+        $sqrt: {
+          $max: [
+            0,
+            {
+              $subtract: [
+                { $divide: [ "$somaQuadMin", "$n" ] },
+                { $pow: [ { $divide: [ "$somaMin", "$n" ] }, 2 ] }
+              ]
+            }
+          ]
+        }
+      },
+      mediaKm: { $divide: [ "$somaKm", "$n" ] }  // média = soma ÷ quantidade de observações
+    }
   }
 ])

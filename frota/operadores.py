@@ -20,6 +20,10 @@ EXPLICACOES: dict[str, str] = {
     "$gte": "maior ou igual a (o limite em si entra).",
     "$gt": "maior que (o limite em si fica de fora).",
     "$multiply": "multiplica os números.",
+    "$sqrt": "raiz quadrada.",
+    "$subtract": "subtrai o segundo número do primeiro.",
+    "$pow": "eleva o número ao expoente indicado.",
+    "$max": "devolve o maior valor da lista.",
     "$literal": "usa o valor exatamente como está, sem interpretar como campo.",
 }
 

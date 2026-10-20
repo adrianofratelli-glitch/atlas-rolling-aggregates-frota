@@ -143,7 +143,10 @@ def _metricas(doc: dict | None, docs_lidos: int, dias: list[int], horas: list[in
               ms: float, docs_examinados: int | None = None) -> dict:
     n = int(doc["n"]) if doc else 0
     media = media_km = desvio = None
-    if n:
+    if n and "mediaMin" in doc:
+        # a estimativa já vem calculada pelo próprio aggregate
+        media, desvio, media_km = doc["mediaMin"], doc["desvioMin"], doc["mediaKm"]
+    elif n:  # consulta salva por uma versão anterior (só somas): calcula aqui
         media = doc["somaMin"] / n
         media_km = doc["somaKm"] / n
         desvio = math.sqrt(max(0.0, doc["somaQuadMin"] / n - media * media))
@@ -173,14 +176,11 @@ def _gerado_por(db: Database, agora: datetime) -> dict:
     return bloco_query(pl.RAW, comentados(p), [pl.RAW], [job_pl.COLECAO])
 
 
-# O aggregate devolve só somas; a média e o desvio saem desta conta, feita no backend.
+# Por que a base guarda somas e não só a média (a conta em si está no último estágio).
 RODAPE_CONTA = (
-    "O aggregate devolve só somas. A estimativa sai desta conta, feita depois, fora do banco:\n"
-    "  média (min)   = somaMin / n\n"
-    "  desvio padrão = raiz( somaQuadMin / n  -  média² )\n"
-    "                  (média dos quadrados menos o quadrado da média)\n"
-    "Por isso o job guarda n e somas, e não só a média: somas se juntam (várias horas e dias\n"
-    "numa resposta só); médias já calculadas não se juntam sem perder o peso de cada uma."
+    "Por que o job guarda n e somas, e não só a média: somas se juntam (várias horas e dias\n"
+    "numa resposta só); médias já calculadas não se juntam sem perder o peso de cada uma.\n"
+    "O desvio padrão sai de somaQuadMin (soma de tempo × tempo), por isso ela também é guardada."
 )
 
 _DETALHE_BASE = {

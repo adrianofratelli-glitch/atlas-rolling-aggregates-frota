@@ -54,6 +54,58 @@
           }
         }
       }
+    },
+    {
+      "comentario": "Calcula a estimativa: média do tempo (soma ÷ quantidade), desvio padrão (raiz da média dos quadrados menos o quadrado da média) e média de km.",
+      "estagio": {
+        "$project": {
+          "_id": 0,
+          "n": 1,
+          "docs": 1,
+          "somaMin": 1,
+          "somaKm": 1,
+          "mediaMin": {
+            "$divide": [
+              "$somaMin",
+              "$n"
+            ]
+          },
+          "desvioMin": {
+            "$sqrt": {
+              "$max": [
+                0,
+                {
+                  "$subtract": [
+                    {
+                      "$divide": [
+                        "$somaQuadMin",
+                        "$n"
+                      ]
+                    },
+                    {
+                      "$pow": [
+                        {
+                          "$divide": [
+                            "$somaMin",
+                            "$n"
+                          ]
+                        },
+                        2
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "mediaKm": {
+            "$divide": [
+              "$somaKm",
+              "$n"
+            ]
+          }
+        }
+      }
     }
   ],
   "pipeline": [
@@ -100,6 +152,55 @@
         },
         "docs": {
           "$sum": 1
+        }
+      }
+    },
+    {
+      "$project": {
+        "_id": 0,
+        "n": 1,
+        "docs": 1,
+        "somaMin": 1,
+        "somaKm": 1,
+        "mediaMin": {
+          "$divide": [
+            "$somaMin",
+            "$n"
+          ]
+        },
+        "desvioMin": {
+          "$sqrt": {
+            "$max": [
+              0,
+              {
+                "$subtract": [
+                  {
+                    "$divide": [
+                      "$somaQuadMin",
+                      "$n"
+                    ]
+                  },
+                  {
+                    "$pow": [
+                      {
+                        "$divide": [
+                          "$somaMin",
+                          "$n"
+                        ]
+                      },
+                      2
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "mediaKm": {
+          "$divide": [
+            "$somaKm",
+            "$n"
+          ]
         }
       }
     }

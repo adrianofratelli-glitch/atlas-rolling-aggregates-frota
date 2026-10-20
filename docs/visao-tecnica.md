@@ -34,7 +34,9 @@ ingestao_simulada ──(de hora em hora: $merge por viagemId + seq)──▶ tr
   `timezone`. A UI mostra os nomes dos dias.
 - **Somas, não médias:** cada documento guarda `n`, `somaMin`, `somaQuadMin` e `somaKm`
   (arredondadas a 6 casas). Média = soma / n; desvio-padrão populacional =
-  √(somaQuad / n − média²). É isso que permite somar horas e dias diferentes.
+  √(somaQuad / n − média²). É isso que permite somar horas e dias diferentes. Na consulta, essa conta
+  é o último estágio do aggregate (`$project` com `$divide`, `$subtract`, `$pow`, `$max`, `$sqrt`):
+  o banco já devolve `mediaMin`, `desvioMin` e `mediaKm`, e o Python só lê.
 
 ## Equivalente a uma materialized view do Oracle
 
