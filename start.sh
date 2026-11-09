@@ -1,7 +1,7 @@
 #!/bin/bash
 # Sobe MongoDB (docker), backend (8410) e frontend (5410).
 #
-# Segue o contrato do launcher do PoV Portfolio (mesmo de atlas-timeseries-pagamentos):
+# Segue o contrato do launcher do PoV Portfolio (mesmo de atlas-timeseries-payments):
 #   1. fica em primeiro plano, para o grupo de processos segurar os filhos;
 #   2. derruba a árvore inteira no SIGTERM (`npm run preview` gera um neto vite);
 #   3. arma o trap antes de subir qualquer coisa e tolera porta ainda fechando.
