@@ -18,16 +18,16 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pymongo.errors import PyMongoError
 
-from frota import cenario, ingestao, previa, seed as seed_mod, settings
-from frota.bootstrap import bootstrap
-from frota.colecoes import COLECOES
-from frota.db import get_db, mascarar
-from frota.janela import ATALHOS, DOW_NOMES, hoje_local, janela_padrao
-from frota.job import rodar_job
-from frota.mongosh import jsonavel
-from frota.operadores import bloco_query
-from frota.pipelines import job as job_pipe
-from frota.schemas import TIPOS_VEICULO
+from backend.frota import cenario, ingestao, previa, seed as seed_mod, settings
+from backend.frota.bootstrap import bootstrap
+from backend.frota.colecoes import COLECOES
+from backend.frota.db import get_db, mascarar
+from backend.frota.janela import ATALHOS, DOW_NOMES, hoje_local, janela_padrao
+from backend.frota.job import rodar_job
+from backend.frota.mongosh import jsonavel
+from backend.frota.operadores import bloco_query
+from backend.frota.pipelines import job as job_pipe
+from backend.frota.schemas import TIPOS_VEICULO
 
 @asynccontextmanager
 async def _ciclo(_app):
@@ -220,7 +220,7 @@ def colecoes():
     return J({"colecoes": lista, "ingestao": ingestao.bloco(agora_utc())})
 
 
-TRIGGER_DIR = Path(__file__).resolve().parent.parent / "atlas-trigger"
+TRIGGER_DIR = Path(__file__).resolve().parents[2] / "atlas-trigger"
 
 
 @app.get("/api/trigger-script")
@@ -311,7 +311,7 @@ def reset_status():
 
 # ---- UI compilada (make ui-build) --------------------------------------------
 
-DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 if DIST.exists():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 

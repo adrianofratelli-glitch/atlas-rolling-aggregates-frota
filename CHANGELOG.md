@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Layout padrão do portfólio**: o código Python passou de `api/`, `frota/` e `jobs/` (raiz) para `backend/api`, `backend/frota` e `backend/jobs`. Imports agora são `backend.*`, o uvicorn sobe `backend.api.main:app` e o job de linha de comando roda com `python -m backend.jobs.materializar`. Sem mudança de comportamento.
+
 ## 2.3.0 (2026-10-19)
 
 - **Step 1 is now "Collections e schema"**: the raw-data sample is gone (a slice of rows says

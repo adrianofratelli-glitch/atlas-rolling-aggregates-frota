@@ -1,9 +1,9 @@
-// GERADO por scripts/export_pipelines.py a partir de frota/pipelines/job.py.
+// GERADO por scripts/export_pipelines.py a partir de backend/frota/pipelines/job.py.
 // Não edite à mão: mude o builder Python e rode `make pipelines`.
 //
 // Job diário (trigger jobDiario, 03:10 em São Paulo): lê a raw da janela padrão
 // [00:00 local de (hoje − 180), 00:00 local de hoje) e materializa trecho_media_dow_hora.
-// Mesma sequência de frota/job.py::rodar_job: count → aggregate ($merge replace) →
+// Mesma sequência de backend/frota/job.py::rodar_job: count → aggregate ($merge replace) →
 // remove o que não foi regravado neste run → registra em job_runs (origem "trigger").
 
 const JANELA_DIAS = 180;
@@ -147,7 +147,7 @@ const TEMPLATE = [
 ];
 
 const BANCO = "frota_eta";
-// Mesmo padrão de frota/db.py: host:porta não sai em mensagem de erro.
+// Mesmo padrão de backend/frota/db.py: host:porta não sai em mensagem de erro.
 const HOST = new RegExp("[A-Za-z0-9][A-Za-z0-9.-]*\\.(?:mongodb\\.net|mongo\\.cosmos\\.azure\\.com|internal)(?::\\d+)?|\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?::\\d+)?", "g");
 
 // Troca toda string igual a um marcador pelo valor da execução (como substituir() no Python).
@@ -184,7 +184,7 @@ function isoDia(ano, mes, dia) {
   return new Date(Date.UTC(ano, mes, dia)).toISOString().slice(0, 10);
 }
 
-// Mesmo formato de frota/job.py::novo_run_id: "YYYY-MM-DDTHH:MM:SSZ-xxxx".
+// Mesmo formato de backend/frota/job.py::novo_run_id: "YYYY-MM-DDTHH:MM:SSZ-xxxx".
 function novoRunId(t) {
   const sufixo = Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
   return `${t.toISOString().slice(0, 19)}Z-${sufixo}`;

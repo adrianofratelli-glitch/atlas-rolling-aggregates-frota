@@ -6,9 +6,9 @@ fora de frota.schemas.VALIDATORS). Não imprime host nem URI.
 import _path  # noqa: F401
 import argparse
 
-from frota import settings
-from frota.db import client, get_db
-from frota.schemas import VALIDATORS
+from backend.frota import settings
+from backend.frota.db import client, get_db
+from backend.frota.schemas import VALIDATORS
 
 DEMO = "frota_eta"  # literal: nunca é dropado, independente de env
 

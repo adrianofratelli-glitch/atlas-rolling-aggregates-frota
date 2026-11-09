@@ -12,6 +12,6 @@ def test_selecao_allowlist():
 
 
 def test_demo_nunca_selecionada_mesmo_com_env(monkeypatch):
-    from frota import settings
+    from backend.frota import settings
     monkeypatch.setattr(settings, "MONGODB_DB", "outro")
     assert "frota_eta" not in selecionar_bancos(["frota_eta", "outro", "frota_eta_test"])

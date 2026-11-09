@@ -5,10 +5,10 @@ import pytest
 from fastapi.testclient import TestClient
 from pymongo.errors import ServerSelectionTimeoutError
 
-from api import main
-from frota import seed as seed_mod
-from frota import settings
-from frota.schemas import VALIDATORS
+from backend.api import main
+from backend.frota import seed as seed_mod
+from backend.frota import settings
+from backend.frota.schemas import VALIDATORS
 
 CEN = {"origem": "A", "destino": "B", "tipoVeiculo": "TRUCK", "dias": [1],
        "horaInicio": 6, "horaFim": 12}
@@ -108,7 +108,7 @@ def test_colecoes_schema_do_banco(cli):
 
 
 def test_campos_documentados_existem_no_schema():
-    from frota.colecoes import COLECOES
+    from backend.frota.colecoes import COLECOES
     for c in COLECOES:
         props = VALIDATORS[c["nome"]]["$jsonSchema"]["properties"]
         for k in c["campos"]:

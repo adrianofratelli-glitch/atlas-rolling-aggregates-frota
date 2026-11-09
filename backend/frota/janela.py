@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from frota.settings import JANELA_DIAS, JOB_HORA_LOCAL, TZ
+from backend.frota.settings import JANELA_DIAS, JOB_HORA_LOCAL, TZ
 
 UTC = timezone.utc
 _TZ = ZoneInfo(TZ)

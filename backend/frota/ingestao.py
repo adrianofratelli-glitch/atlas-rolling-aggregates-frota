@@ -9,9 +9,9 @@ from datetime import datetime
 
 from pymongo.database import Database
 
-from frota.operadores import bloco_query
-from frota.pipelines import comentados, estagios
-from frota.pipelines import ingestao as pipe
+from backend.frota.operadores import bloco_query
+from backend.frota.pipelines import comentados, estagios
+from backend.frota.pipelines import ingestao as pipe
 
 
 def simulado_ate(db: Database) -> datetime | None:

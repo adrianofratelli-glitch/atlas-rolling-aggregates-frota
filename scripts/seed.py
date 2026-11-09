@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 
 import _path  # noqa: F401
 
-from frota import settings
-from frota.db import get_db
-from frota.gerador import PERFIS
-from frota.seed import resetar
+from backend.frota import settings
+from backend.frota.db import get_db
+from backend.frota.gerador import PERFIS
+from backend.frota.seed import resetar
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

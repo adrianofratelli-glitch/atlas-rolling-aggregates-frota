@@ -5,9 +5,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from frota import job as job_mod
-from frota import seed as seed_mod
-from frota.janela import hoje_local, janela_padrao
+from backend.frota import job as job_mod
+from backend.frota import seed as seed_mod
+from backend.frota.janela import hoje_local, janela_padrao
 
 AGORA = datetime(2026, 10, 19, 13, 0, tzinfo=timezone.utc)
 HOJE = hoje_local(AGORA)

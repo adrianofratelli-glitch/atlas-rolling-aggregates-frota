@@ -16,18 +16,18 @@ Os dois têm `skip_catchup_events: true`: se o app ficar parado, não recupera e
 
 `functions/rodarJob.js` e `functions/ingerirSimulado.js` são **gerados** por
 `make pipelines` (`scripts/export_pipelines.py`) a partir dos builders de
-`frota/pipelines/`. O gerador chama o builder com marcadores (`"__INICIO__"`, `"__FIM__"`,
+`backend/frota/pipelines/`. O gerador chama o builder com marcadores (`"__INICIO__"`, `"__FIM__"`,
 `"__DATA_REF__"`, `"__RUN_ID__"`, `"__IDS__"`, `"__AGORA__"`) e a Function só troca cada
 marcador pelo valor da execução. `tests/test_trigger_export.py` garante que o template
 substituído é igual ao pipeline do Python, que os `.js` versionados estão atualizados e que
 a Function, executada no node com um `context` falso, faz as mesmas chamadas que
-`frota/job.py` e `frota/ingestao.py`. Não edite os `.js` à mão.
+`backend/frota/job.py` e `backend/frota/ingestao.py`. Não edite os `.js` à mão.
 
 ## Fuso fixo de −3 h
 
 A Function calcula a data local somando `OFFSET_SP_HORAS = -3` ao instante UTC. São Paulo
 não tem horário de verão desde 2019, então o fuso é UTC−3 o ano todo e a janela fica
-`[00:00 local de (hoje − 180), 00:00 local de hoje)`, como `frota/janela.py::janela_padrao`.
+`[00:00 local de (hoje − 180), 00:00 local de hoje)`, como `backend/frota/janela.py::janela_padrao`.
 O Python usa `America/Sao_Paulo` (zoneinfo); se o horário de verão voltar, revise a
 constante e o cron.
 

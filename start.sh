@@ -69,16 +69,16 @@ echo "🚚 Agregados em janela móvel · fallback de ETA"
 echo "=============================================="
 
 cd "$BASE"
-ALVO="$(.venv/bin/python -c 'from frota import settings; print(settings.ALVO)')"
+ALVO="$(.venv/bin/python -c 'from backend.frota import settings; print(settings.ALVO)')"
 echo "▶ MongoDB: $ALVO"
-if [[ "$ALVO" == "local" ]] && ! .venv/bin/python -c "from frota.db import client; client().admin.command('ping')" >/dev/null 2>&1; then
+if [[ "$ALVO" == "local" ]] && ! .venv/bin/python -c "from backend.frota.db import client; client().admin.command('ping')" >/dev/null 2>&1; then
   echo "▶ MongoDB 8.0 (docker, replica set de 1 nó)..."
   if docker compose version >/dev/null 2>&1; then docker compose up -d --wait; else docker-compose up -d --wait; fi \
     || fail "MongoDB não subiu. Docker/colima está rodando?"
 fi
 
 echo "▶ backend (porta $BACKEND_PORT)..."
-.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port "$BACKEND_PORT" > "$BACKEND_LOG" 2>&1 &
+.venv/bin/uvicorn backend.api.main:app --host 127.0.0.1 --port "$BACKEND_PORT" > "$BACKEND_LOG" 2>&1 &
 BACKEND_PID=$!
 if ! wait_for_url "http://127.0.0.1:$BACKEND_PORT/health/live" 40; then
   echo "❌ Backend não ficou pronto. Últimas linhas do log:" >&2

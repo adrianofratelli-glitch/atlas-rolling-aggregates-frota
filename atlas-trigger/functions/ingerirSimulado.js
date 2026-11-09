@@ -1,9 +1,9 @@
-// GERADO por scripts/export_pipelines.py a partir de frota/pipelines/ingestao.py.
+// GERADO por scripts/export_pipelines.py a partir de backend/frota/pipelines/ingestao.py.
 // Não edite à mão: mude o builder Python e rode `make pipelines`.
 //
 // Ingestão simulada (trigger ingestaoSimulada, de hora em hora): move da fila
 // ingestao_simulada para trecho_observacoes o que já "aconteceu". Mesmo algoritmo de
-// frota/ingestao.py::ingerir: escolhe os _ids, faz o $merge só deles e apaga só eles da
+// backend/frota/ingestao.py::ingerir: escolhe os _ids, faz o $merge só deles e apaga só eles da
 // fila (o que chegar no meio do caminho não se perde).
 
 const FILTRO_PENDENTES = {
@@ -45,7 +45,7 @@ const TEMPLATE = [
 ];
 
 const BANCO = "frota_eta";
-// Mesmo padrão de frota/db.py: host:porta não sai em mensagem de erro.
+// Mesmo padrão de backend/frota/db.py: host:porta não sai em mensagem de erro.
 const HOST = new RegExp("[A-Za-z0-9][A-Za-z0-9.-]*\\.(?:mongodb\\.net|mongo\\.cosmos\\.azure\\.com|internal)(?::\\d+)?|\\b(?:\\d{1,3}\\.){3}\\d{1,3}(?::\\d+)?", "g");
 
 // Troca toda string igual a um marcador pelo valor da execução (como substituir() no Python).

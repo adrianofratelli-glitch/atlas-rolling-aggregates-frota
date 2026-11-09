@@ -1,7 +1,7 @@
 # Consultas e pipelines
 
-Fonte: `frota/pipelines/*.py`, `frota/job.py`, `frota/cenario.py`, `frota/ingestao.py`,
-`frota/previa.py`, `api/main.py`. Versões coláveis em `docs/pipelines/`.
+Fonte: `backend/frota/pipelines/*.py`, `backend/frota/job.py`, `backend/frota/cenario.py`, `backend/frota/ingestao.py`,
+`backend/frota/previa.py`, `backend/api/main.py`. Versões coláveis em `docs/pipelines/`.
 
 | Operação | Collection | Forma | Índice |
 |---|---|---|---|

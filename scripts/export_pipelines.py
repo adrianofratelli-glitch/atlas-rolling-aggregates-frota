@@ -1,6 +1,6 @@
 """Exporta os pipelines para docs/pipelines/ e gera as Functions dos triggers do Atlas.
 
-Uma fonte só: os builders de `frota/pipelines/`. Para as Functions, o builder é chamado
+Uma fonte só: os builders de `backend/frota/pipelines/`. Para as Functions, o builder é chamado
 com marcadores (`"__INICIO__"`, `"__FIM__"`, `"__DATA_REF__"`, `"__RUN_ID__"`, `"__IDS__"`,
 `"__AGORA__"`) no lugar dos valores; o JS só troca cada marcador pelo valor da execução.
 Assim o trigger roda exatamente o pipeline que o Python roda (tests/test_trigger_export.py).
@@ -20,15 +20,15 @@ import _path  # noqa: F401
 
 from bson import json_util
 
-from frota.cenario import Filtro
-from frota.db import _HOST
-from frota.janela import inicio_dia, janela_padrao, proximo_job
-from frota.mongosh import _quebrar, pipeline_mongosh
-from frota.pipelines import cenario as pl_cenario
-from frota.pipelines import comentados, estagios
-from frota.pipelines import ingestao as pl_ingestao
-from frota.pipelines import job as pl_job
-from frota.settings import JANELA_DIAS
+from backend.frota.cenario import Filtro
+from backend.frota.db import _HOST
+from backend.frota.janela import inicio_dia, janela_padrao, proximo_job
+from backend.frota.mongosh import _quebrar, pipeline_mongosh
+from backend.frota.pipelines import cenario as pl_cenario
+from backend.frota.pipelines import comentados, estagios
+from backend.frota.pipelines import ingestao as pl_ingestao
+from backend.frota.pipelines import job as pl_job
+from backend.frota.settings import JANELA_DIAS
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "pipelines"
@@ -78,7 +78,7 @@ _CABECALHO = """\
 
 _COMUM = """\
 const BANCO = "@@BANCO@@";
-// Mesmo padrão de frota/db.py: host:porta não sai em mensagem de erro.
+// Mesmo padrão de backend/frota/db.py: host:porta não sai em mensagem de erro.
 const HOST = new RegExp(@@HOST@@, "g");
 
 // Troca toda string igual a um marcador pelo valor da execução (como substituir() no Python).
@@ -105,7 +105,7 @@ _JOB = """\
 //
 // Job diário (trigger jobDiario, 03:10 em São Paulo): lê a raw da janela padrão
 // [00:00 local de (hoje − @@JANELA@@), 00:00 local de hoje) e materializa @@MEDIA@@.
-// Mesma sequência de frota/job.py::rodar_job: count → aggregate ($merge replace) →
+// Mesma sequência de backend/frota/job.py::rodar_job: count → aggregate ($merge replace) →
 // remove o que não foi regravado neste run → registra em job_runs (origem "trigger").
 
 const JANELA_DIAS = @@JANELA@@;
@@ -134,7 +134,7 @@ function isoDia(ano, mes, dia) {
   return new Date(Date.UTC(ano, mes, dia)).toISOString().slice(0, 10);
 }
 
-// Mesmo formato de frota/job.py::novo_run_id: "YYYY-MM-DDTHH:MM:SSZ-xxxx".
+// Mesmo formato de backend/frota/job.py::novo_run_id: "YYYY-MM-DDTHH:MM:SSZ-xxxx".
 function novoRunId(t) {
   const sufixo = Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
   return `${t.toISOString().slice(0, 19)}Z-${sufixo}`;
@@ -190,7 +190,7 @@ _INGESTAO = """\
 //
 // Ingestão simulada (trigger ingestaoSimulada, de hora em hora): move da fila
 // @@ORIGEM_COL@@ para @@DESTINO_COL@@ o que já "aconteceu". Mesmo algoritmo de
-// frota/ingestao.py::ingerir: escolhe os _ids, faz o $merge só deles e apaga só eles da
+// backend/frota/ingestao.py::ingerir: escolhe os _ids, faz o $merge só deles e apaga só eles da
 // fila (o que chegar no meio do caminho não se perde).
 
 const FILTRO_PENDENTES = @@FILTRO@@;
@@ -246,12 +246,12 @@ def gerar_functions() -> dict[str, str]:
     """{caminho relativo a atlas-trigger/: conteúdo} das duas Functions."""
     comum = _preencher(_COMUM, {"BANCO": BANCO, "HOST": json.dumps(_HOST.pattern)})
     job = _preencher(_CABECALHO + _JOB, {
-        "ORIGEM": "frota/pipelines/job.py", "COMUM": comum, "JANELA": str(JANELA_DIAS),
+        "ORIGEM": "backend/frota/pipelines/job.py", "COMUM": comum, "JANELA": str(JANELA_DIAS),
         "RAW": pl_cenario.RAW, "MEDIA": pl_job.COLECAO, "TEMPLATE": _js(template_job()),
         "PASSOS": _passos(pl_job.pipeline(_Marcador("__INICIO__"), _Marcador("__FIM__"),
                                           _Marcador("__DATA_REF__"), "__RUN_ID__"))})
     ingestao = _preencher(_CABECALHO + _INGESTAO, {
-        "ORIGEM": "frota/pipelines/ingestao.py", "COMUM": comum,
+        "ORIGEM": "backend/frota/pipelines/ingestao.py", "COMUM": comum,
         "ORIGEM_COL": pl_ingestao.ORIGEM, "DESTINO_COL": pl_ingestao.DESTINO,
         "FILTRO": _js(template_filtro_pendentes()), "TEMPLATE": _js(template_ingestao()),
         "PASSOS": _passos(pl_ingestao.pipeline(_Marcador("__AGORA__"), ["__IDS__"]))})

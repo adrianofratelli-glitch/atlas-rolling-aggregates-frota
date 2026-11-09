@@ -12,10 +12,10 @@ from datetime import datetime, timedelta
 
 from pymongo.database import Database
 
-from frota.janela import inicio_dia, hoje_local, proximo_job
-from frota.pipelines import job as job_pipe
-from frota.pipelines.job import CHAVE, COLECAO
-from frota.settings import JANELA_DIAS
+from backend.frota.janela import inicio_dia, hoje_local, proximo_job
+from backend.frota.pipelines import job as job_pipe
+from backend.frota.pipelines.job import CHAVE, COLECAO
+from backend.frota.settings import JANELA_DIAS
 
 RAW = "trecho_observacoes"
 _trava = threading.Lock()  # cache.clear()/store não pode cruzar com leitura em outra thread

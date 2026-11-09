@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from frota.operadores import EXPLICACOES, bloco_query, operadores_usados
-from frota.pipelines import comentados, estagios
-from frota.cenario import Filtro
-from frota.pipelines import cenario as cen_pipe
-from frota.pipelines import ingestao as ing_pipe
-from frota.pipelines import job as job_pipe
+from backend.frota.operadores import EXPLICACOES, bloco_query, operadores_usados
+from backend.frota.pipelines import comentados, estagios
+from backend.frota.cenario import Filtro
+from backend.frota.pipelines import cenario as cen_pipe
+from backend.frota.pipelines import ingestao as ing_pipe
+from backend.frota.pipelines import job as job_pipe
 
 INI = datetime(2026, 4, 22, 3, tzinfo=timezone.utc)
 FIM = datetime(2026, 10, 19, 3, tzinfo=timezone.utc)

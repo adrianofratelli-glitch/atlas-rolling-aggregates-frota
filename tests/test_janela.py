@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from frota import janela as j
+from backend.frota import janela as j
 
 UTC = timezone.utc
 

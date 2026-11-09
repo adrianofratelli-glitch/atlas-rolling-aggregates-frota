@@ -7,7 +7,7 @@ A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0
 
 1. Schema v2 com `$jsonSchema` strict em todas as collections e bootstrap idempotente que
    remove índices fora do contrato; código e collections do desenho incremental apagados.
-2. Calendário puro (`frota/janela.py`): janela semiaberta, faixas de hora, próximo job,
+2. Calendário puro (`backend/frota/janela.py`): janela semiaberta, faixas de hora, próximo job,
    períodos; `dataRef`/`agora` sempre por parâmetro.
 3. Gerador com padrões por dia/hora/veículo e trechos esparsos; reset pela data do clique
    com 14 dias de chegadas simuladas.

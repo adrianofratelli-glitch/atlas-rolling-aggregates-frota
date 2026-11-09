@@ -21,7 +21,7 @@ venv: .venv/bin/python
 .env:
 	cp .env.example .env
 
-ALVO = $(shell $(PY) -c "from frota import settings; print(settings.ALVO)" 2>/dev/null || echo local)
+ALVO = $(shell $(PY) -c "from backend.frota import settings; print(settings.ALVO)" 2>/dev/null || echo local)
 
 # Alvo local: MongoDB 8.0 replica set de 1 nó no docker. Alvo Atlas: só o bootstrap.
 up: venv .env
@@ -40,10 +40,10 @@ ingerir: venv
 	$(PY) scripts/ingerir.py $(DBARG)
 
 job: venv
-	$(PY) jobs/materializar.py $(DATAARG) $(DBARG)
+	$(PY) -m backend.jobs.materializar $(DATAARG) $(DBARG)
 
 api: venv
-	$(if $(DB),MONGODB_DB=$(DB),) .venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8410
+	$(if $(DB),MONGODB_DB=$(DB),) .venv/bin/uvicorn backend.api.main:app --host 127.0.0.1 --port 8410
 
 frontend/node_modules:
 	cd frontend && npm install

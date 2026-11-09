@@ -1,7 +1,7 @@
 """Explicações dos operadores e o bloco "query" que toda resposta da API carrega."""
 from __future__ import annotations
 
-from frota.mongosh import pipeline_mongosh
+from backend.frota.mongosh import pipeline_mongosh
 
 EXPLICACOES: dict[str, str] = {
     "$match": "filtra os documentos, deixando passar só os que atendem à condição.",

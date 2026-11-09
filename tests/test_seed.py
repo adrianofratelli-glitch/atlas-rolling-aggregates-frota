@@ -8,11 +8,11 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-import frota
-from frota import seed as seed_mod
-from frota.db import EscritaRecusada, get_db
-from frota.gerador import FATOR_TIPO, gerar
-from frota.janela import hoje_local, inicio_dia
+import backend.frota as frota
+from backend.frota import seed as seed_mod
+from backend.frota.db import EscritaRecusada, get_db
+from backend.frota.gerador import FATOR_TIPO, gerar
+from backend.frota.janela import hoje_local, inicio_dia
 
 AGORA = datetime(2026, 10, 19, 15, 20, tzinfo=timezone.utc)
 
@@ -95,7 +95,7 @@ def test_resetar_recusa_demo_sem_permissao(monkeypatch):
 def test_resetar_popula(db, monkeypatch):
     chamadas = []
     stub = types.SimpleNamespace(rodar_job=lambda d, ref, origem: chamadas.append((ref, origem)))
-    monkeypatch.setitem(sys.modules, "frota.job", stub)
+    monkeypatch.setitem(sys.modules, "backend.frota.job", stub)
     monkeypatch.setattr(frota, "job", stub, raising=False)
     etapas = []
     r = seed_mod.resetar(db, AGORA, 1, perfil="teste", progresso=lambda e, p: etapas.append(e))
@@ -108,7 +108,7 @@ def test_resetar_popula(db, monkeypatch):
 
 def test_resetar_progresso_por_lote(db, monkeypatch):
     stub = types.SimpleNamespace(rodar_job=lambda d, ref, origem: None)
-    monkeypatch.setitem(sys.modules, "frota.job", stub)
+    monkeypatch.setitem(sys.modules, "backend.frota.job", stub)
     monkeypatch.setattr(frota, "job", stub, raising=False)
     monkeypatch.setattr(seed_mod, "LOTE", 1_000)  # perfil de teste é pequeno: lotes menores
     marcas = []

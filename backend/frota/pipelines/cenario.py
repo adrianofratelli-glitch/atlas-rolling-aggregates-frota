@@ -10,13 +10,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from frota.settings import TZ
+from backend.frota.settings import TZ
 
 from . import Estagio
 from .job import COLECAO as BASE
 
 if TYPE_CHECKING:
-    from frota.cenario import Filtro
+    from backend.frota.cenario import Filtro
 
 RAW = "trecho_observacoes"
 SALVOS = "consultas_salvas"

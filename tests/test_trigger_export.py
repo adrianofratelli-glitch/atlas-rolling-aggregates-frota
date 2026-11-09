@@ -22,12 +22,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import export_pipelines as ex  # noqa: E402
 
-from frota import settings  # noqa: E402
-from frota.janela import janela_padrao  # noqa: E402
-from frota.mongosh import jsonavel  # noqa: E402
-from frota.pipelines import estagios  # noqa: E402
-from frota.pipelines import ingestao as pl_ingestao  # noqa: E402
-from frota.pipelines import job as pl_job  # noqa: E402
+from backend.frota import settings  # noqa: E402
+from backend.frota.janela import janela_padrao  # noqa: E402
+from backend.frota.mongosh import jsonavel  # noqa: E402
+from backend.frota.pipelines import estagios  # noqa: E402
+from backend.frota.pipelines import ingestao as pl_ingestao  # noqa: E402
+from backend.frota.pipelines import job as pl_job  # noqa: E402
 
 TRIGGER = ROOT / "atlas-trigger"
 DATA_REF = date(2026, 10, 22)

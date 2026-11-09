@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 import pytest
 from pymongo.errors import WriteError
 
-from frota import db as dbmod
-from frota.bootstrap import bootstrap
+from backend.frota import db as dbmod
+from backend.frota.bootstrap import bootstrap
 
 INDICES = {
     "trecho_observacoes": {"_id_", "viagemId_1_seq_1",

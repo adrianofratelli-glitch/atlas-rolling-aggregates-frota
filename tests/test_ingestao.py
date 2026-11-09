@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from frota import ingestao, previa
-from frota import seed as seed_mod
-from frota.schemas import VALIDATORS
+from backend.frota import ingestao, previa
+from backend.frota import seed as seed_mod
+from backend.frota.schemas import VALIDATORS
 
 AGORA = datetime(2026, 10, 19, 13, tzinfo=timezone.utc)
 

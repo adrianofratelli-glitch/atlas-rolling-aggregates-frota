@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from frota.settings import TZ
+from backend.frota.settings import TZ
 
 from . import Estagio
 

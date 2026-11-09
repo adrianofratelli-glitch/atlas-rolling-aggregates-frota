@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 import _path  # noqa: F401
 
-from frota import settings
-from frota.db import get_db
-from frota.ingestao import ingerir
+from backend.frota import settings
+from backend.frota.db import get_db
+from backend.frota.ingestao import ingerir
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()

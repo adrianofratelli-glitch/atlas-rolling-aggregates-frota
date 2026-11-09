@@ -6,11 +6,11 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
-from frota import cenario
-from frota import seed as seed_mod
-from frota.janela import hoje_local, horas_da_faixa, janela_padrao, proximo_job
-from frota.schemas import VALIDATORS
-from frota.settings import MIN_AMOSTRAS
+from backend.frota import cenario
+from backend.frota import seed as seed_mod
+from backend.frota.janela import hoje_local, horas_da_faixa, janela_padrao, proximo_job
+from backend.frota.schemas import VALIDATORS
+from backend.frota.settings import MIN_AMOSTRAS
 
 # Instante "real" (hora cheia): o TTL de `consultas_salvas` usa o relógio do servidor, então
 # um `agora` fixo no passado faria o monitor apagar o doc salvo no meio do teste.

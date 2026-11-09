@@ -1,6 +1,6 @@
 # Visão técnica — agregados em janela móvel (fallback de ETA)
 
-Versão 2.0.0. Extraído do código em `frota/`, `api/`, `jobs/` e `atlas-trigger/`. Os
+Versão 2.0.0. Extraído do código em `backend/frota/`, `backend/api/`, `backend/jobs/` e `atlas-trigger/`. Os
 exemplos de documento vêm do banco `frota_eta` depois de um reset (dados sintéticos).
 
 ## O problema
@@ -55,7 +55,7 @@ arquitetura, não de desempenho: o Oracle não foi medido.
 
 Banco `frota_eta`. Datas sempre **BSON Date UTC**. Toda collection é criada com
 `$jsonSchema` (`validationLevel: strict`, `validationAction: error`) pelo bootstrap
-idempotente (`frota/bootstrap.py`, `scripts/bootstrap_db.py`), que também remove índices
+idempotente (`backend/frota/bootstrap.py`, `scripts/bootstrap_db.py`), que também remove índices
 fora do contrato. **É um modelo de referência: adapte ao cadastro mestre real** (códigos
 de pontos, tipos de veículo, identidade da viagem).
 
@@ -128,7 +128,7 @@ porque o monitor de TTL roda a cada ~60 s.
 
 ## Pipelines
 
-Os builders ficam em `frota/pipelines/` (listas de `Estagio(comentario, estagio)`); a UI,
+Os builders ficam em `backend/frota/pipelines/` (listas de `Estagio(comentario, estagio)`); a UI,
 `docs/pipelines/` e as Functions do trigger recebem exatamente o que o driver recebe.
 `make pipelines` regenera `docs/pipelines/*.js|json` e `atlas-trigger/functions/*.js`.
 
@@ -158,7 +158,7 @@ propósito e o `n` aparece como veio.
 ### Bloco `query` em toda resposta
 
 Toda rota que executa algo devolve `query`: `{le, grava, operacao, mongosh, operadores:
-[{op, explicacao}]}` (`frota/operadores.py`), e as respostas da base trazem também
+[{op, explicacao}]}` (`backend/frota/operadores.py`), e as respostas da base trazem também
 `geradoPor` (o pipeline do último job com status `ok`, com a janela e o `runId` dele). É o
 que a gaveta "Ver query / chamada executada" mostra.
 
