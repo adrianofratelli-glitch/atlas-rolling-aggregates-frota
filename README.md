@@ -1,5 +1,7 @@
 # Rolling-window aggregates on MongoDB: an offline ETA fallback for a fleet
 
+Mapa do código: [docs/MAPA_DO_CODIGO.md](docs/MAPA_DO_CODIGO.md)
+
 An executable proof of value for one question: **how do raw trip-leg records become
 pre-computed averages that answer "every Friday afternoon, this leg, this truck" in
 milliseconds, without computing anything at ETA time?** The window is **D-1 to D-180**;
