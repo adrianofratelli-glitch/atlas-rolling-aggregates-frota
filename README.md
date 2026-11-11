@@ -167,6 +167,23 @@ Also: `make job [DATA=YYYY-MM-DD]`, `make ingerir`, `make pipelines` (regenerate
 `ALLOW_DEMO_DB_WRITE=1` is set (the `seed` target sets it). API errors never expose the
 host, port or URI.
 
+## Docker
+
+One container: nginx serves the built UI on port 8080 and proxies `/api`, `/eta` and `/health` to the
+FastAPI backend, which runs with a single worker on `127.0.0.1:8000`. The image has no MongoDB: the target
+comes from the environment, so set `MONGODB_URI` (Atlas). The `docker-compose.yml` MongoDB is only for the
+local-target workflow and is not used by the image.
+
+```bash
+docker build -t atlas-rolling-aggregates-frota .
+docker run --env-file .env.docker -p 8080:8080 atlas-rolling-aggregates-frota
+curl -fsS http://127.0.0.1:8080/health/ready   # pings the configured database
+```
+
+`docker run --env-file` does not strip quotes: write `KEY=value` with no quotes in the file you
+pass (a quoted `MONGODB_URI` reaches the driver with the quotes and fails). No `.env` and no secret go into
+the image; everything is read from the environment at runtime.
+
 ## Tests
 
 The same 107 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
