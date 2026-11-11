@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      # Same local target as docker-compose.yml: MongoDB 8.0 single-node replica set on
+      # 27027. No Atlas and no secrets: with MONGODB_URI unset, settings picks ALVO=local
+      # and the suite runs against the frota_eta_test database.
+      - name: Start MongoDB 8.0 replica set
+        run: |
+          docker run -d --name frota-eta-mongo --ulimit nofile=64000:64000 \
+            -p 127.0.0.1:27027:27027 mongo:8.0 \
+            mongod --replSet rs0 --bind_ip_all --port 27027
+          for i in $(seq 1 40); do
+            if docker exec frota-eta-mongo mongosh --port 27027 --quiet --eval \
+              "try { rs.status().myState === 1 ? quit(0) : quit(1) } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27027'}]}); quit(1) }"; then
+              echo "replica set PRIMARY"; exit 0
+            fi
+            sleep 3
+          done
+          docker logs frota-eta-mongo | tail -50
+          exit 1
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q tests
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
