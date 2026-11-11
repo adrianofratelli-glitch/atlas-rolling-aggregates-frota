@@ -9,7 +9,10 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    # mongod 8.x recusa subir em kernel >= 6.19 (SERVER-121912); o ubuntu-latest já roda kernel 7.0.
+    # O ubuntu-22.04 ainda usa kernel anterior (sonda de 2026-11-11). Revisar quando a imagem 22.04 sair
+    # do ar ou quando houver mongod compatível.
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
