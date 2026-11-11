@@ -9,10 +9,17 @@ permissions:
 
 jobs:
   backend:
-    # mongod 8.x recusa subir em kernel >= 6.19 (SERVER-121912); o ubuntu-latest já roda kernel 7.0.
-    # O ubuntu-22.04 ainda usa kernel anterior (sonda de 2026-11-11). Revisar quando a imagem 22.04 sair
-    # do ar ou quando houver mongod compatível.
-    runs-on: ubuntu-22.04
+    # mongod 8.x recusa subir em kernel >= 6.19 (SERVER-121912) e o ubuntu-latest já roda kernel 7.0.
+    # Duas pernas (sonda de 2026-11-11): 8.0 no ubuntu-22.04 (kernel anterior; cobertura total) e 7.0 no
+    # ubuntu-latest (4 testes de recurso 8.0 se pulam). Quando o 22.04 sair do ar, a perna 7.0 continua.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, mongo: "8.0" }
+          - { os: ubuntu-latest, mongo: "7.0" }
+    name: backend (mongo ${{ matrix.mongo }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -24,12 +31,12 @@ jobs:
       # Same local target as docker-compose.yml: MongoDB 8.0 single-node replica set on
       # 27027. No Atlas and no secrets: with MONGODB_URI unset, settings picks ALVO=local
       # and the suite runs against the frota_eta_test database.
-      - name: Start MongoDB 8.0 replica set
+      - name: Start MongoDB ${{ matrix.mongo }} replica set
         run: |
           docker run -d --name frota-eta-mongo --ulimit nofile=64000:64000 \
-            -p 127.0.0.1:27027:27027 mongo:8.0 \
+            -p 127.0.0.1:27027:27027 mongo:${{ matrix.mongo }} \
             mongod --replSet rs0 --bind_ip_all --port 27027
-          for i in $(seq 1 40); do
+          for _ in $(seq 1 40); do
             if docker exec frota-eta-mongo mongosh --port 27027 --quiet --eval \
               "try { rs.status().myState === 1 ? quit(0) : quit(1) } catch (e) { rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'localhost:27027'}]}); quit(1) }"; then
               echo "replica set PRIMARY"; exit 0
