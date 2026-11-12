@@ -162,6 +162,29 @@ def _resposta(selo: str, detalhe: str, query: dict, *, origem: str, nivel=None, 
             "aviso": aviso, "expiraEm": expira, "query": query, "geradoPor": gerado}
 
 
+def defasagem_dias(run: dict | None, agora: datetime) -> int | None:
+    """Quantos dias a base está atrás de hoje (0 = em dia; None = nenhum job ok).
+
+    Sem o trigger implantado a janela não anda sozinha: a base de um job de dias atrás
+    responde a janela *daquele* dia, não a de hoje. A API diz isso em vez de esconder.
+    """
+    if not run:
+        return None
+    return (hoje_local(agora) - date.fromisoformat(run["dataRef"])).days
+
+
+def aviso_defasagem(run: dict | None, agora: datetime) -> str | None:
+    dias = defasagem_dias(run, agora)
+    if not dias or dias <= 0:
+        return None
+    ini, fim = janela_padrao(date.fromisoformat(run["dataRef"]))
+    ultimo = hoje_local(fim - timedelta(seconds=1))
+    plural = "dia" if dias == 1 else "dias"
+    return (f"base de {dias} {plural} atrás: o último job foi para "
+            f"{date.fromisoformat(run['dataRef']):%d/%m/%Y} e cobre "
+            f"{_ddmm(ini)} a {ultimo:%d/%m}, não a janela de hoje; rode o job (passo 3)")
+
+
 def _gerado_por(db: Database, agora: datetime) -> dict:
     """O pipeline do último job que deu certo: é ele que produziu a base que está lá."""
     run = db.job_runs.find_one({"status": "ok"}, sort=[("iniciadoEm", -1)])
@@ -206,13 +229,15 @@ def _da_base(db: Database, f: Filtro, agora: datetime) -> dict:
     ms = round((time.perf_counter() - t0) * 1000, 1)
     query = bloco_query(pl.BASE, comentados(p), [pl.BASE], [], rodape=RODAPE_CONTA)
     gerado = _gerado_por(db, agora)
+    run = db.job_runs.find_one({"status": "ok"}, {"dataRef": 1}, sort=[("iniciadoEm", -1)])
+    defasada = aviso_defasagem(run, agora)
     if nivel == "sem_historico":
+        avisos = [f"menos de {MIN_AMOSTRAS} amostras mesmo ampliando", defasada]
         return _resposta("job_diario", _DETALHE_BASE[nivel], query, origem="base", nivel=nivel,
-                         aviso=f"menos de {MIN_AMOSTRAS} amostras mesmo ampliando",
-                         gerado=gerado)
+                         aviso=" · ".join(a for a in avisos if a), gerado=gerado)
     res = _metricas(doc, int(doc["docs"]), d, h, ms)
     return _resposta("job_diario", _DETALHE_BASE[nivel], query, origem="base", nivel=nivel,
-                     resultado=res, gerado=gerado)
+                     resultado=res, gerado=gerado, aviso=defasada)
 
 
 def _bloco_salvo(chave: str, agora: datetime) -> dict:

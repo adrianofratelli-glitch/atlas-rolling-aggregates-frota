@@ -338,3 +338,30 @@ def test_veiculos_por_tipo(db):
     v = cenario.veiculos_por_tipo(db)
     assert set(v) == {"TRUCK", "CARRETA"}
     assert v["TRUCK"] == [f"VEI-TRUCK-{i}" for i in range(1, len(v["TRUCK"]) + 1)]
+
+
+# ---- base defasada (sem trigger a janela não anda sozinha) ------------------------------
+
+def test_defasagem_dias_puro():
+    agora = datetime(2026, 11, 12, 13, 0, tzinfo=timezone.utc)
+    assert cenario.defasagem_dias(None, agora) is None
+    assert cenario.defasagem_dias({"dataRef": "2026-11-12"}, agora) == 0
+    assert cenario.defasagem_dias({"dataRef": "2026-11-06"}, agora) == 6
+    # 23:30 local do dia 12 ainda é dia 12 em São Paulo (02:30 UTC do dia 13)
+    assert cenario.defasagem_dias({"dataRef": "2026-11-12"},
+                                  datetime(2026, 11, 13, 2, 30, tzinfo=timezone.utc)) == 0
+    assert cenario.aviso_defasagem({"dataRef": "2026-11-12"}, agora) is None
+    a = cenario.aviso_defasagem({"dataRef": "2026-11-06"}, agora)
+    assert a.startswith("base de 6 dias atrás") and "06/11/2026" in a
+    assert "10/05 a 05/11" in a  # a janela daquele job: [10/05, 06/11)
+
+
+def test_base_defasada_avisa_na_resposta(db):
+    t = _regulares(db)[0]
+    em_dia = cenario.consultar(db, _filtro(t), AGORA)
+    assert em_dia["origem"] == "base" and em_dia["aviso"] is None
+    tarde = cenario.consultar(db, _filtro(t), AGORA + timedelta(days=3))
+    assert tarde["origem"] == "base"
+    assert tarde["aviso"].startswith("base de 3 dias atrás")
+    # o número continua o da base (é ela que está lá); o aviso é que muda
+    assert tarde["resultado"]["n"] == em_dia["resultado"]["n"]

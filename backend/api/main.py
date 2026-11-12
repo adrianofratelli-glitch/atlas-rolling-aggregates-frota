@@ -36,7 +36,7 @@ async def _ciclo(_app):
     yield
 
 
-app = FastAPI(lifespan=_ciclo, title="Agregados em janela móvel — fallback de ETA", version="2.2.0")
+app = FastAPI(lifespan=_ciclo, title="Agregados em janela móvel — fallback de ETA", version="2.4.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5410",
                                                   "http://localhost:5410"],
                    allow_methods=["*"], allow_headers=["*"])
@@ -131,6 +131,8 @@ def estado():
     return J({"alvo": settings.ALVO, "agora": agora, "dataRef": data_ref.isoformat(),
               "janela": {"inicio": ini, "fim": fim, "dias": settings.JANELA_DIAS},
               "ultimoJob": ultimo, "ultimoErro": erro, "simuladoAte": ingestao.simulado_ate(d),
+              # dias que a base está atrás de hoje: sem trigger a janela não anda sozinha
+              "baseDefasadaDias": cenario.defasagem_dias(ultimo, agora),
               "resetando": _resetando(),
               "trigger": {"implantado": settings.ALVO == "atlas"
                           and bool(os.getenv("APPSERVICES_APP_ID", "").strip()),

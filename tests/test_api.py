@@ -255,3 +255,11 @@ def test_veiculos_cache_sem_corrida(semeado, monkeypatch):
     monkeypatch.setattr(settings, "MONGODB_DB", settings.MONGODB_TEST_DB)
     a = main._veiculos(semeado)
     assert main._veiculos(semeado) == a
+
+
+def test_estado_base_defasada(cli, monkeypatch):
+    from datetime import timedelta
+    assert cli.get("/api/estado").json()["baseDefasadaDias"] == 0
+    real = main.agora_utc()
+    monkeypatch.setattr(main, "agora_utc", lambda: real + timedelta(days=2))
+    assert cli.get("/api/estado").json()["baseDefasadaDias"] == 2
