@@ -3,6 +3,8 @@
 Uma fonte só: os builders de `backend/frota/pipelines/`. Para as Functions, o builder é chamado
 com marcadores (`"__INICIO__"`, `"__FIM__"`, `"__DATA_REF__"`, `"__RUN_ID__"`, `"__IDS__"`,
 `"__AGORA__"`) no lugar dos valores; o JS só troca cada marcador pelo valor da execução.
+A data local (janela e `dataRef`) também sai de um builder (`pipelines/job.py::janela_no_servidor`):
+a Function pede ao MongoDB, com `timezone: "America/Sao_Paulo"`, em vez de somar offset fixo.
 Assim o trigger roda exatamente o pipeline que o Python roda (tests/test_trigger_export.py).
 
 Gera:
@@ -48,6 +50,10 @@ class _Marcador(str):
 def template_job() -> list[dict]:
     return substituir(estagios(pl_job.pipeline(_Marcador("__INICIO__"), _Marcador("__FIM__"),
                                                _Marcador("__DATA_REF__"), "__RUN_ID__")), {})
+
+
+def template_janela() -> list[dict]:
+    return substituir(estagios(pl_job.janela_no_servidor(_Marcador("__AGORA__"))), {})
 
 
 def template_ingestao() -> list[dict]:
@@ -108,10 +114,11 @@ _JOB = """\
 // Mesma sequência de backend/frota/job.py::rodar_job: count → aggregate ($merge replace) →
 // remove o que não foi regravado neste run → registra em job_runs (origem "trigger").
 
-const JANELA_DIAS = @@JANELA@@;
-// São Paulo não tem horário de verão desde 2019: o fuso é UTC−3 fixo o ano todo.
-// O Python usa America/Sao_Paulo (zoneinfo); se o horário de verão voltar, revisar aqui.
-const OFFSET_SP_HORAS = -3;
+// A data local não é calculada aqui com offset fixo: o MongoDB devolve o 00:00 de hoje e o de
+// @@JANELA@@ dias antes em America/Sao_Paulo ($dateTrunc/$dateSubtract com timezone), seguindo a
+// base de fusos do servidor, horário de verão incluído. Mesmo resultado de
+// backend/frota/janela.py::janela_padrao (conferido em tests/test_live_trigger.py).
+const JANELA_NO_SERVIDOR = @@JANELA_SERVIDOR@@;
 
 // O que cada estágio do pipeline faz (o JSON abaixo é exatamente o que vai ao MongoDB;
 // os textos "__INICIO__" etc. são trocados pelos valores da execução):
@@ -119,44 +126,26 @@ const OFFSET_SP_HORAS = -3;
 const TEMPLATE = @@TEMPLATE@@;
 
 @@COMUM@@
-// Data local (ano, mês 0–11, dia) de São Paulo no instante `agora`.
-function diaLocal(agora) {
-  const l = new Date(agora.getTime() + OFFSET_SP_HORAS * 3600 * 1000);
-  return [l.getUTCFullYear(), l.getUTCMonth(), l.getUTCDate()];
-}
-
-// 00:00 local do dia, como instante UTC (Date.UTC normaliza dia negativo ou > 31).
-function inicioDia(ano, mes, dia) {
-  return new Date(Date.UTC(ano, mes, dia, -OFFSET_SP_HORAS));
-}
-
-function isoDia(ano, mes, dia) {
-  return new Date(Date.UTC(ano, mes, dia)).toISOString().slice(0, 10);
-}
-
 // Mesmo formato de backend/frota/job.py::novo_run_id: "YYYY-MM-DDTHH:MM:SSZ-xxxx".
 function novoRunId(t) {
   const sufixo = Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
   return `${t.toISOString().slice(0, 19)}Z-${sufixo}`;
 }
 
-// Relógio do cluster (o mesmo do $$NOW gravado em atualizadoEm), como o Python faz com
-// hello.localTime: o corte "não foi regravado neste run" não depende do relógio da Function.
-async function relogioServidor(db) {
-  const r = await db.collection("@@RAW@@")
-    .aggregate([{ $limit: 1 }, { $project: { _id: 0, t: "$$NOW" } }]).toArray();
-  return r.length ? r[0].t : new Date();
+// Janela, dataRef e relógio do cluster numa ida só ao servidor. `t` é o $$NOW do cluster (o
+// mesmo gravado em atualizadoEm), como o Python faz com hello.localTime: o corte "não foi
+// regravado neste run" não depende do relógio da Function.
+async function janelaNoServidor(raw, agora) {
+  const r = await raw.aggregate(substituir(JANELA_NO_SERVIDOR, { __AGORA__: agora })).toArray();
+  if (r.length !== 1) throw new Error("o servidor não devolveu a janela do job");
+  return r[0];
 }
 
 exports = async function () {
   const db = context.services.get("mongodb-atlas").db(BANCO);
   const raw = db.collection("@@RAW@@");
   const media = db.collection("@@MEDIA@@");
-  const [ano, mes, dia] = diaLocal(new Date());
-  const inicio = inicioDia(ano, mes, dia - JANELA_DIAS);
-  const fim = inicioDia(ano, mes, dia);
-  const dataRef = isoDia(ano, mes, dia);
-  const inicioRun = await relogioServidor(db);
+  const { inicio, fim, dataRef, t: inicioRun } = await janelaNoServidor(raw, new Date());
   const runId = novoRunId(inicioRun);
   const pipeline = substituir(TEMPLATE, {
     __INICIO__: inicio, __FIM__: fim, __DATA_REF__: dataRef, __RUN_ID__: runId,
@@ -248,6 +237,7 @@ def gerar_functions() -> dict[str, str]:
     job = _preencher(_CABECALHO + _JOB, {
         "ORIGEM": "backend/frota/pipelines/job.py", "COMUM": comum, "JANELA": str(JANELA_DIAS),
         "RAW": pl_cenario.RAW, "MEDIA": pl_job.COLECAO, "TEMPLATE": _js(template_job()),
+        "JANELA_SERVIDOR": _js(template_janela()),
         "PASSOS": _passos(pl_job.pipeline(_Marcador("__INICIO__"), _Marcador("__FIM__"),
                                           _Marcador("__DATA_REF__"), "__RUN_ID__"))})
     ingestao = _preencher(_CABECALHO + _INGESTAO, {

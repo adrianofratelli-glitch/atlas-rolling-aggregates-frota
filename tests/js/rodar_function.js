@@ -1,5 +1,7 @@
 // Executa uma Function gerada com `context` falso e relógio fixo; imprime as chamadas.
-// Uso: node rodar_function.js <arquivo.js> <instante ISO>
+// Uso: node rodar_function.js <arquivo.js> <instante ISO> [<janela JSON>]
+// <janela JSON> = {"inicio", "fim", "dataRef"} que o servidor devolveria ao pipeline de janela
+// (o cálculo real no MongoDB é conferido em tests/test_live_trigger.py).
 const fs = require("fs");
 const FIXO = Date.parse(process.argv[3]);
 const RealDate = Date;
@@ -15,8 +17,14 @@ function colecao(nome) {
     aggregate: (p) => ({
       toArray: async () => {
         chamadas.push(["aggregate", nome, p]);
-        // relógio do servidor: 1 s depois do relógio da Function
-        return p[1] && p[1].$project && p[1].$project.t ? [{ t: new RealDate(FIXO + 1000) }] : [];
+        // pipeline de janela: o servidor devolve janela, dataRef e o relógio dele, 1 s depois
+        // do relógio da Function
+        if (p[1] && p[1].$unionWith) {
+          const j = JSON.parse(process.argv[4]);
+          return [{ t: new RealDate(FIXO + 1000), inicio: new RealDate(j.inicio),
+                    fim: new RealDate(j.fim), dataRef: j.dataRef }];
+        }
+        return [];
       },
     }),
     find: (q) => ({ toArray: async () => { chamadas.push(["find", nome, q]); return [{ _id: "a" }, { _id: "b" }]; } }),

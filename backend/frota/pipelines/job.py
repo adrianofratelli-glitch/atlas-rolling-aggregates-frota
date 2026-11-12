@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from backend.frota.settings import TZ
+from backend.frota.settings import JANELA_DIAS, TZ
 
 from . import Estagio
 
@@ -47,4 +47,38 @@ def pipeline(inicio: datetime, fim: datetime, data_ref: date, run_id: str) -> li
                 "se já existe um documento com a mesma chave, ele é substituído; se não, é inserido.",
                 {"$merge": {"into": COLECAO, "on": CHAVE,
                             "whenMatched": "replace", "whenNotMatched": "insert"}}),
+    ]
+
+
+def janela_no_servidor(agora: datetime) -> list[Estagio]:
+    """Janela padrão e relógio calculados pelo próprio MongoDB, no fuso de São Paulo.
+
+    É o que a Function do trigger usa: em vez de somar um offset fixo ao UTC, pede ao servidor
+    o 00:00 local de hoje (`$dateTrunc` com `timezone`) e o de 180 dias antes
+    (`$dateSubtract` com `timezone`), que seguem a base de fusos do servidor (horário de verão
+    incluído). `agora` chega como valor; `$$NOW` só dá o relógio do servidor para o corte da
+    limpeza (o mesmo papel do `hello.localTime` no Python). Roda em qualquer collection, vazia
+    ou não: o `$match` impossível descarta tudo e o `$unionWith` com `$documents` (6.0+) põe
+    um único documento no fluxo. `tests/test_live_trigger.py` confere contra `janela_padrao`.
+    """
+    hoje = {"$dateTrunc": {"date": agora, "unit": "day", "timezone": TZ}}
+    return [
+        Estagio("Descarta os documentos da collection: só o cálculo de datas interessa.",
+                {"$match": {"$expr": False}}),
+        Estagio("Põe um único documento vazio no fluxo, mesmo com a collection vazia.",
+                {"$unionWith": {"pipeline": [{"$documents": [{}]}]}}),
+        Estagio("Calcula no servidor, no horário de São Paulo, o 00:00 de hoje (fim da janela), "
+                f"o de {JANELA_DIAS} dias antes (início), a data de referência e o relógio do servidor.",
+                {"$project": {
+                    "_id": 0,
+                    "t": "$$NOW",
+                    # truncar de novo: no dia em que o horário de verão começa, o 00:00 não
+                    # existe e o dia local começa à 01:00; subtrair dias manteria essa 01:00
+                    "inicio": {"$dateTrunc": {
+                        "date": {"$dateSubtract": {"startDate": hoje, "unit": "day",
+                                                   "amount": JANELA_DIAS, "timezone": TZ}},
+                        "unit": "day", "timezone": TZ}},
+                    "fim": hoje,
+                    "dataRef": {"$dateToString": {"date": agora, "format": "%Y-%m-%d",
+                                                  "timezone": TZ}}}}),
     ]

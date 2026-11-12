@@ -65,10 +65,13 @@ def test_js_gerado_atualizado():
             f"{caminho} desatualizado: rode `make pipelines`"
 
 
-def test_js_contem_template_e_offset():
+def test_js_contem_template_e_janela_no_servidor():
     js = ex.gerar_functions()
     job = js["functions/rodarJob.js"]
-    assert "const OFFSET_SP_HORAS = -3;" in job
+    # sem offset fixo: a data local vem do servidor, com o fuso de settings.TZ
+    assert "OFFSET" not in job and "getUTC" not in job
+    assert json.dumps(ex.template_janela(), ensure_ascii=False, indent=2) in job
+    assert job.count(f'"timezone": "{settings.TZ}"') >= 5
     assert json.dumps(ex.template_job(), ensure_ascii=False, indent=2) in job
     assert '"trigger"' in job
     ing = js["functions/ingerirSimulado.js"]
@@ -107,9 +110,10 @@ NODE = shutil.which("node")
 precisa_node = pytest.mark.skipif(NODE is None, reason="node não instalado")
 
 
-def _rodar(function: str, instante: str) -> dict:
+def _rodar(function: str, instante: str, janela: dict | None = None) -> dict:
+    extra = [json.dumps(janela)] if janela else []
     r = subprocess.run([NODE, str(ROOT / "tests/js/rodar_function.js"),
-                        str(TRIGGER / "functions" / function), instante],
+                        str(TRIGGER / "functions" / function), instante, *extra],
                        capture_output=True, text=True, timeout=30, check=True)
     return json.loads(r.stdout)
 
@@ -121,13 +125,18 @@ def _rodar(function: str, instante: str) -> dict:
     ("2026-03-01T03:00:00Z", date(2026, 3, 1)),     # 00:00 local; janela atravessa o ano
 ])
 def test_function_job_roda_o_pipeline_do_python(instante, data_ref):
-    saida = _rodar("rodarJob.js", instante)
+    inicio, fim = janela_padrao(data_ref)
+    saida = _rodar("rodarJob.js", instante, {"inicio": inicio.isoformat(),
+                                              "fim": fim.isoformat(),
+                                              "dataRef": data_ref.isoformat()})
     ops = [(c[0], c[1]) for c in saida["chamadas"]]
     raw, media = f"{ex.BANCO}.trecho_observacoes", f"{ex.BANCO}.{pl_job.COLECAO}"
     assert ops == [("aggregate", raw), ("count", raw), ("aggregate", raw), ("count", media),
                    ("deleteMany", media), ("insertOne", f"{ex.BANCO}.job_runs")]
     run = saida["chamadas"][-1][2]
-    inicio, fim = janela_padrao(data_ref)
+    agora = datetime.fromisoformat(instante.replace("Z", "+00:00"))
+    # 1ª ida ao servidor: o pipeline de janela, com o instante da Function como valor
+    assert saida["chamadas"][0][2] == jsonavel(estagios(pl_job.janela_no_servidor(agora)))
     servidor = datetime.fromisoformat(instante.replace("Z", "+00:00")) + timedelta(seconds=1)
     assert re.fullmatch(re.escape(servidor.strftime("%Y-%m-%dT%H:%M:%SZ")) + r"-[0-9a-f]{4}",
                         run["runId"])
