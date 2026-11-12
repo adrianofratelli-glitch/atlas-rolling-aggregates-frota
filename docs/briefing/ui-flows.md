@@ -46,5 +46,5 @@ tudo e remonta o passo. Reset concorrente → 409 com a etapa em andamento.
 
 Estados: backend fora → aviso "rode `make api`" com "Tentar de novo"; 502 do proxy →
 "confira `make api`"; base vazia → aviso com botão Resetar demo; sem job ainda → aviso
-para rodar o passo 3; durante o reset → 409 em `/api/colecoes`, `/api/job` e `/api/cenario`, e os
+para rodar o passo 3; base defasada (`/api/estado.baseDefasadaDias` > 0, último job de outro dia) → banner em todos os passos "A base foi gerada para DD/MM/AAAA, há N dias: as médias cobrem a janela daquele dia, não a de hoje", que manda rodar o passo 3 ou Resetar demo e some depois do job (no passo 4, a resposta da base repete isso em `aviso`); durante o reset → 409 em `/api/colecoes`, `/api/job` e `/api/cenario`, e os
 passos mostram o progresso.

@@ -3,7 +3,8 @@
 **Na manhã da demo:** abra a UI e clique **Resetar demo** (rodapé do trilho). Sem o
 trigger de ingestão implantado, é o reset que gera a raw até o instante do clique e roda o
 job do dia; leva menos de 2 minutos no Atlas. Confira no topo o chip **MongoDB Atlas** e
-no trilho "base gerada em …" com a data de hoje. Suba com `./start.sh` (ou `make api` +
+no trilho "base gerada em …" com a data de hoje. Se aparecer o banner "A base foi gerada
+para …, há N dias", o reset não foi feito: a base ainda é a de outro dia. Suba com `./start.sh` (ou `make api` +
 `make ui`) e abra http://127.0.0.1:5410.
 
 No topo de cada passo, o **mapa do fluxo** acende o trecho daquele passo: use-o para dizer

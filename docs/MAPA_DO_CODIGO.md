@@ -19,12 +19,12 @@ backend/frota/
   settings.py               constantes de negócio (janela 180 d, mín. 5 amostras, 03:10, crons) e escolha do alvo (Atlas ou Docker local)
   db.py                     MongoClient, mascarar host em erro, guardar_escrita (só *_test sem ALLOW_DEMO_DB_WRITE=1)
   job.py                    rodar_job: o job diário (count, aggregate com $merge, remove quem saiu, grava job_runs)
-  cenario.py                a consulta do passo 4: Filtro, consultar -> _da_base ou _sob_demanda (raw, com $merge opcional)
+  cenario.py                a consulta do passo 4: Filtro, consultar -> _da_base ou _sob_demanda (raw, com $merge opcional); defasagem_dias/aviso_defasagem (base de outro dia)
   ingestao.py               ingestão simulada: fila ingestao_simulada -> trecho_observacoes ($merge)
   previa.py                 prévia do próximo job (só leitura: o que entra, o que sai)
   janela.py                 datas: janela padrão, fuso São Paulo, faixas manhã/tarde/noite, período relativo
   pipelines/
-    job.py                  pipeline do job (match, set, group, project, merge em trecho_media_dow_hora)
+    job.py                  pipeline do job (match, set, group, project, merge em trecho_media_dow_hora) e janela_no_servidor (janela calculada pelo MongoDB, usada pela Function)
     cenario.py              pipelines da consulta: base() e raw() (com $merge em consultas_salvas)
     ingestao.py             pipeline da ingestão (merge em trecho_observacoes)
     __init__.py             Estagio (estágio + comentário) e estagios()/comentados()
@@ -47,9 +47,9 @@ frontend/src/
   passos/                   uma tela por passo: Colecoes, Regra, GerarBase, Consultar, QuandoAtualiza
   comp/                     MapaFluxo (SVG do fluxo), GavetaQuery, FiltroCenario, Resultado, Selo, ResetDemo
   fmt.js                    formatação de números e datas
-scripts/                    seed.py, bootstrap_db.py, ingerir.py, export_pipelines.py (gera os .js e docs/pipelines), trigger_deploy.sh, limpar_atlas.py, ui_smoke.py, capturar_prints.py
-tests/                      pytest contra o banco *_test; tests/js/rodar_function.js roda a Function no node
-docs/                       briefing/, pipelines/ (exportados), consultas.md, decisoes-cliente.md, roteiro-demo.md, visao-tecnica.md
+scripts/                    seed.py, bootstrap_db.py, ingerir.py, export_pipelines.py (gera os .js e docs/pipelines), trigger_deploy.sh, limpar_atlas.py, ui_smoke.py, capturar_prints.py, bench_escala.py (raw 1×/2×/4× e time series)
+tests/                      pytest contra o banco *_test; tests/js/rodar_function.js roda a Function no node; tests/js/rodar_function_mongosh.js + test_live_trigger.py rodam a Function de verdade no *_test
+docs/                       adr/, briefing/, pipelines/ (exportados), consultas.md, decisoes-cliente.md, roteiro-demo.md, visao-tecnica.md
 Makefile, start.sh, docker-compose.yml   atalhos de execução; Mongo local na porta 27027
 ```
 
@@ -59,18 +59,19 @@ Todo clique passa por `frontend/src/api.js` (`get`/`post`); o Vite encaminha `/a
 
 | Tela / botão | Componente (arquivo:linha) | Chamada HTTP | Handler | Função de negócio | Onde toca o MongoDB |
 |---|---|---|---|---|---|
-| Abrir a página (alvo, frescor da base) | `App.jsx:52` | `GET /api/estado` | `backend/api/main.py:121` `estado` | `backend/frota/ingestao.py::simulado_ate` | `backend/api/main.py::estado` (`job_runs.find_one` x2, :127-128); `ingestao.py::simulado_ate` (`$group $max`, `ingestao_simulada`) |
-| Abrir a página (listas de trecho/veículo) | `App.jsx:52` | `GET /api/opcoes` | `backend/api/main.py:176` `opcoes` | `_trechos` (:142), `_veiculos` (:152) -> `cenario.py::veiculos_por_tipo` (:122) | `pontos.find`, `trechos.find` (:143-149); `$group` tipo×veículo na raw (`cenario.py:124`), `trecho_observacoes` |
-| Passo 1, Collections e schema | `passos/Colecoes.jsx:75` | `GET /api/colecoes` | `backend/api/main.py:203` `colecoes` | `_info_colecoes` (:185), `backend/frota/colecoes.py::COLECOES`, `ingestao.bloco` | `listCollections`, `list_indexes`, `estimated_document_count` (:185-199), todas as collections |
+| Abrir a página (alvo, frescor da base) | `App.jsx:52` | `GET /api/estado` | `backend/api/main.py:121` `estado` | `backend/frota/ingestao.py::simulado_ate` | `backend/api/main.py::estado` (`job_runs.find_one` x2, :127-128; `cenario.defasagem_dias` :135); `ingestao.py::simulado_ate` (`$group $max`, `ingestao_simulada`) |
+| Abrir a página (listas de trecho/veículo) | `App.jsx:52` | `GET /api/opcoes` | `backend/api/main.py:178` `opcoes` | `_trechos` (:144), `_veiculos` (:154) -> `cenario.py::veiculos_por_tipo` (:122) | `pontos.find`, `trechos.find` (:145-151); `$group` tipo×veículo na raw (`cenario.py:124`), `trecho_observacoes` |
+| Passo 1, Collections e schema | `passos/Colecoes.jsx:75` | `GET /api/colecoes` | `backend/api/main.py:205` `colecoes` | `_info_colecoes` (:187), `backend/frota/colecoes.py::COLECOES`, `ingestao.bloco` | `listCollections`, `list_indexes`, `estimated_document_count` (:187-201), todas as collections |
 | Passo 2, A regra | `passos/Regra.jsx` | nenhuma (usa `estado` já carregado) | n/a | n/a | n/a |
-| Passo 3, "Rodar job agora" | `passos/GerarBase.jsx:50` `rodar`, botão :67 | `POST /api/job` | `backend/api/main.py:240` `job` | `backend/frota/job.py::rodar_job` (:27) | `count_documents` + `aggregate` com `$merge` em `trecho_observacoes` -> `trecho_media_dow_hora`; `delete_many` dos antigos; `insert_one` em `job_runs` |
-| Passo 3, "Ver script do trigger" (gaveta) | `passos/GerarBase.jsx:13` | `GET /api/trigger-script` | `backend/api/main.py:227` `trigger_script` | lê arquivos de `atlas-trigger/` | não |
-| Passo 4, mudança de filtro com janela padrão e sem veículo (consulta automática, 300 ms) | `comp/FiltroCenario.jsx:37` `useConsultaAuto` (post em :46); usado em `passos/Consultar.jsx:48` | `POST /api/cenario` | `backend/api/main.py:249` `cenario_api` | `backend/frota/cenario.py::consultar` (:286) -> `_da_base` (:194) | `aggregate` em `trecho_media_dow_hora` (`cenario.py:201`), `job_runs.find_one` (:167) |
-| Passo 4, "Calcular" (veículo específico, datas, últimos N dias) | `passos/Consultar.jsx:50` `calcular`, botão :95 | `POST /api/cenario` | idem | `cenario.py::consultar` -> `_sob_demanda` (:228) | `consultas_salvas.find_one` (:250), `aggregate` na raw `trecho_observacoes` (:259) com `$merge` em `consultas_salvas` se "guardar o resultado" marcado, `count_documents` de docs lidos (:270, :275) |
+| Banner "A base foi gerada para … há N dias" (todos os passos) | `App.jsx:148` | nenhuma (usa `estado.baseDefasadaDias`) | `backend/api/main.py::estado` | `backend/frota/cenario.py::defasagem_dias` | `job_runs.find_one` (último ok) |
+| Passo 3, "Rodar job agora" | `passos/GerarBase.jsx:50` `rodar`, botão :67 | `POST /api/job` | `backend/api/main.py:242` `job` | `backend/frota/job.py::rodar_job` (:27) | `count_documents` + `aggregate` com `$merge` em `trecho_observacoes` -> `trecho_media_dow_hora`; `delete_many` dos antigos; `insert_one` em `job_runs` |
+| Passo 3, "Ver script do trigger" (gaveta) | `passos/GerarBase.jsx:13` | `GET /api/trigger-script` | `backend/api/main.py:229` `trigger_script` | lê arquivos de `atlas-trigger/` | não |
+| Passo 4, mudança de filtro com janela padrão e sem veículo (consulta automática, 300 ms) | `comp/FiltroCenario.jsx:37` `useConsultaAuto` (post em :46); usado em `passos/Consultar.jsx:48` | `POST /api/cenario` | `backend/api/main.py:251` `cenario_api` | `backend/frota/cenario.py::consultar` (:311) -> `_da_base` (:217) | `aggregate` em `trecho_media_dow_hora` (`cenario.py:224`), `job_runs.find_one` (:190; o mesmo run alimenta `aviso_defasagem`, :233) |
+| Passo 4, "Calcular" (veículo específico, datas, últimos N dias) | `passos/Consultar.jsx:50` `calcular`, botão :95 | `POST /api/cenario` | idem | `cenario.py::consultar` -> `_sob_demanda` (:253) | `consultas_salvas.find_one` (:275), `aggregate` na raw `trecho_observacoes` (:284) com `$merge` em `consultas_salvas` se "guardar o resultado" marcado, `count_documents` de docs lidos (:295, :300) |
 | Passo 4, chips de dia, faixa e atalhos Manhã/Tarde/Noite | `comp/FiltroCenario.jsx:97-98` (dia), `:115-117` (atalho) | só mudam o filtro; a chamada é a de cima | idem | `backend/frota/janela.py::ATALHOS` (:17), `horas_da_faixa` (:37) | idem |
-| Passo 5, Quando atualiza | `passos/QuandoAtualiza.jsx:15` | `GET /api/job_runs?limite=5` e `GET /api/proximo-job` | `backend/api/main.py:267` `job_runs`; `:262` `proximo_job` | `backend/frota/previa.py::proximo` (:40) | `job_runs.find().sort`; `count_documents` na raw e `$group` das chaves (`previa.py:24-50`) |
+| Passo 5, Quando atualiza | `passos/QuandoAtualiza.jsx:15` | `GET /api/job_runs?limite=5` e `GET /api/proximo-job` | `backend/api/main.py:269` `job_runs`; `:264` `proximo_job` | `backend/frota/previa.py::proximo` (:40) | `job_runs.find().sort`; `count_documents` na raw e `$group` das chaves (`previa.py:24-50`) |
 | Passo 5, "Ir ao passo 3" | `passos/QuandoAtualiza.jsx:36` | nenhuma | n/a | n/a | n/a |
-| Rodapé, "Resetar demo" (confirma no diálogo) | `comp/ResetDemo.jsx:32`, confirma :43 -> `App.jsx:87` `iniciarReset` (`post` em :89) | `POST /api/reset` (202), depois `GET /api/reset/status` + `GET /api/estado` a cada ~1 s (`App.jsx:101-107`) | `backend/api/main.py:294` `reset`; `:306` `reset_status` | thread `_executar_reset` (:278) -> `backend/frota/seed.py::resetar` (:25) | `drop_collection`, `bootstrap`, `insert_many` (`seed.py:45`) e um `rodar_job` final |
+| Rodapé, "Resetar demo" (confirma no diálogo) | `comp/ResetDemo.jsx:32`, confirma :43 -> `App.jsx:87` `iniciarReset` (`post` em :89) | `POST /api/reset` (202), depois `GET /api/reset/status` + `GET /api/estado` a cada ~1 s (`App.jsx:101-107`) | `backend/api/main.py:296` `reset`; `:308` `reset_status` | thread `_executar_reset` (:280) -> `backend/frota/seed.py::resetar` (:25) | `drop_collection`, `bootstrap`, `insert_many` (`seed.py:45`) e um `rodar_job` final |
 | Copiar query (gaveta "Ver query / chamada executada") | `comp/GavetaQuery.jsx:46` | nenhuma (texto já veio na resposta, montado por `backend/frota/operadores.py::bloco_query`) | n/a | n/a | n/a |
 
 Não há botão de ingestão simulada na UI: ela roda pelo trigger `ingestaoSimulada` ou por `make ingerir` (`scripts/ingerir.py` -> `backend/frota/ingestao.py::ingerir`).
@@ -85,15 +86,15 @@ Briefing: [briefing/queries.md](briefing/queries.md). Pipelines exportados em `d
 | Job: contagem lida / gravada | `job.py::rodar_job` (:38, :40) | `count_documents` | `trecho_observacoes`, `trecho_media_dow_hora` |
 | Job: remove chaves que saíram da janela | `job.py::rodar_job` (:41) | `delete_many {atualizadoEm: {$lt: início do run}}` | `trecho_media_dow_hora` |
 | Job: registro da execução | `job.py::rodar_job` (:44, :48) | `insert_one` (ok ou erro) | `job_runs` |
-| Consulta pela base | `cenario.py::_da_base` (:194; aggregate :201) com `pipelines/cenario.py::base` (:46) | `$match` (rota, dow, hora) -> `$group` somando; com ampliação em 3 tentativas (pedido, todos os dias, dia inteiro) | `trecho_media_dow_hora` |
-| Consulta sob demanda (raw) | `cenario.py::_sob_demanda` (:228; aggregate :259) com `pipelines/cenario.py::raw` (:63) | `$match` por rota/período -> `$set` -> `$match` dow/hora -> `$group`; `$merge` opcional (`pipelines/cenario.py:100`) | lê `trecho_observacoes` |
-| Consulta: salvo ainda válido | `cenario.py::_sob_demanda` (:250), releitura após `$merge` (:263) | `find_one {_id, expiraEm > agora}` | `consultas_salvas` (TTL por `expiraEm`) |
-| Docs lidos / examinados | `cenario.py::_sob_demanda` (:270, :275) | `count_documents` | `trecho_observacoes` |
+| Consulta pela base | `cenario.py::_da_base` (:217; aggregate :224) com `pipelines/cenario.py::base` (:46) | `$match` (rota, dow, hora) -> `$group` somando; com ampliação em 3 tentativas (pedido, todos os dias, dia inteiro) | `trecho_media_dow_hora` |
+| Consulta sob demanda (raw) | `cenario.py::_sob_demanda` (:253; aggregate :284) com `pipelines/cenario.py::raw` (:63) | `$match` por rota/período -> `$set` -> `$match` dow/hora -> `$group`; `$merge` opcional (`pipelines/cenario.py:100`) | lê `trecho_observacoes` |
+| Consulta: salvo ainda válido | `cenario.py::_sob_demanda` (:275), releitura após `$merge` (:288) | `find_one {_id, expiraEm > agora}` | `consultas_salvas` (TTL por `expiraEm`) |
+| Docs lidos / examinados | `cenario.py::_sob_demanda` (:295, :300) | `count_documents` | `trecho_observacoes` |
 | Veículos por tipo | `cenario.py::veiculos_por_tipo` (:122, aggregate :124) | `$group` por tipo e veículo | `trecho_observacoes` |
-| Último job ok | `cenario.py::_gerado_por` (:165, :167), `backend/api/main.py::estado` (:127), `_veiculos` (:153) | `find_one` ordenado por `iniciadoEm` | `job_runs` |
-| Trechos e nomes de ponto | `backend/api/main.py::_trechos` (:142-149) | `find` | `pontos`, `trechos` |
-| Schema e índices reais | `backend/api/main.py::_info_colecoes` (:185) | `listCollections`, `list_indexes`, `estimated_document_count` | todas |
-| Execuções recentes | `backend/api/main.py::job_runs` (:267) | `find().sort(iniciadoEm -1).limit` | `job_runs` |
+| Último job ok | `cenario.py::_gerado_por` (:188, :190), `backend/api/main.py::estado` (:127), `_veiculos` (:155) | `find_one` ordenado por `iniciadoEm` | `job_runs` |
+| Trechos e nomes de ponto | `backend/api/main.py::_trechos` (:144-151) | `find` | `pontos`, `trechos` |
+| Schema e índices reais | `backend/api/main.py::_info_colecoes` (:187) | `listCollections`, `list_indexes`, `estimated_document_count` | todas |
+| Execuções recentes | `backend/api/main.py::job_runs` (:269) | `find().sort(iniciadoEm -1).limit` | `job_runs` |
 | Prévia do próximo job | `backend/frota/previa.py::proximo` (:40), `_chaves_na_raw` (:24), `_chaves_que_somem` (:32) | `count_documents`, `$group` de chaves | `trecho_observacoes`, `trecho_media_dow_hora`, `job_runs` |
 | Ingestão simulada | `backend/frota/ingestao.py::ingerir` (:31) com `pipelines/ingestao.py::pipeline` (:22; `$merge` :36) | `find` dos pendentes, aggregate `$match _id $in` -> `$project` -> `$merge` em `trecho_observacoes`, depois `delete_many` na fila | `ingestao_simulada` -> `trecho_observacoes` |
 | Até onde vai a simulação | `ingestao.py::simulado_ate` (:17) | `$group` com `$max` | `ingestao_simulada` |

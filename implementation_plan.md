@@ -1,6 +1,6 @@
 # Plano de implementação
 
-Estado em 2026-10-19. Versão 2.3.0 na `main`.
+Estado em 2026-11-12. Versão 2.4.0 na branch `feat/improve-2026-11-12` (2.3.0 na `main`).
 A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0.0/v1.0.1.
 
 ## Concluído (v2.0.0)
@@ -25,10 +25,21 @@ A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0
 
 107 testes no Atlas (9.0.4) (v2.3); demo com 836 mil observações, 60 trechos e 29.962 médias.
 
+## Concluído (v2.4.0)
+
+12. Base defasada visível: `baseDefasadaDias` em `/api/estado`, banner na UI e `aviso` na
+    resposta da base com a janela que ela realmente cobre.
+13. Function do trigger sem offset fixo: janela calculada no servidor (ADR 0001) e executada
+    num MongoDB real pelo mongosh (`tests/test_live_trigger.py`).
+14. Escala medida em 1×/2×/4× e raw em time series (`scripts/bench_escala.py`, ADR 0002).
+
+112 testes no Atlas (9.0.7) em 2026-11-12.
+
 ## Não feito / próximos passos
 
 - Implantar os triggers (`make trigger-deploy`) com uma chave que tenha Project Owner no
   projeto do cluster. Até lá, resetar a demo na manhã da apresentação.
-- Regravar a réplica `rolling` do `pov-demo-player` (a atual é da API 1.0.1).
 - Limitar `expiraEm` ao próximo job quando um período absoluto salvo inclui dias recentes.
-- Publicar a branch e a release 2.0.0 depois do teste do usuário.
+- Publicar a branch e a release 2.4.0 depois do teste do usuário.
+- Job incremental (só o dia que entra e o que sai) se o volume do cliente passar muito do 4× medido.
+- Testar com sharding (o cluster do portfólio é replica set).

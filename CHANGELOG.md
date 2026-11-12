@@ -4,6 +4,28 @@
 
 - **Layout padrão do portfólio**: o código Python passou de `api/`, `frota/` e `jobs/` (raiz) para `backend/api`, `backend/frota` e `backend/jobs`. Imports agora são `backend.*`, o uvicorn sobe `backend.api.main:app` e o job de linha de comando roda com `python -m backend.jobs.materializar`. Sem mudança de comportamento.
 
+## 2.4.0 (2026-11-12)
+
+- **A stale base is no longer silent.** Without the trigger deployed, the window does not move
+  on its own: the demo database was still answering with the base of 2026-11-06 while step 2
+  showed today's window. `GET /api/estado` now returns `baseDefasadaDias`, the UI shows a banner
+  on every step until the job runs, and a default-window answer from the base carries an
+  `aviso` with the window the base really covers (`cenario.defasagem_dias`,
+  `cenario.aviso_defasagem`).
+- **The trigger Function asks MongoDB for the window**: no more fixed UTC−3 offset. One
+  aggregate (`pipelines/job.py::janela_no_servidor`) returns the local midnight of today and of
+  180 days before in `America/Sao_Paulo` (`$dateTrunc`/`$dateSubtract` with `timezone`), the
+  `dataRef` and the cluster clock. Same result as `janela.py::janela_padrao` in 30,681 instants
+  of 2008–2019 (daylight-saving years), after a second `$dateTrunc` that fixes the day DST
+  starts (midnight does not exist). ADR `docs/adr/0001-janela-do-trigger-no-servidor.md`.
+- **The Function runs on a real MongoDB**: `tests/test_live_trigger.py` runs the versioned
+  `rodarJob.js` through mongosh (`tests/js/rodar_function_mongosh.js`) against the `*_test`
+  database and requires the same base as the Python job; it also checks the server window on
+  DST transition days.
+- **Scale measured**: `scripts/bench_escala.py` copies the raw collection k times on the server,
+  runs the job and explains the queries (ready base vs raw), and measures the raw as a time
+  series collection. Numbers and decision in the README and in ADR 0002.
+
 ## 2.3.0 (2026-10-19)
 
 - **Step 1 is now "Collections e schema"**: the raw-data sample is gone (a slice of rows says

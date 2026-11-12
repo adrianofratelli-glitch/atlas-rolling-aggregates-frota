@@ -124,17 +124,26 @@ The comparison is architectural, not a performance claim: Oracle was not measure
 ## Scheduling: Atlas Scheduled Triggers
 
 `atlas-trigger/` holds an App Services app in `appservices` CLI format with two Scheduled
-Triggers: `jobDiario` (`10 6 * * *` UTC = 03:10 in São Paulo, which has had no daylight
-saving time since 2019) and `ingestaoSimulada` (minute 5 of every hour, moves already
+Triggers: `jobDiario` (`10 6 * * *` UTC = 03:10 in São Paulo) and `ingestaoSimulada` (minute 5 of every hour, moves already
 "happened" observations from `ingestao_simulada` to the raw collection). Their Functions
 are **generated** by `make pipelines` from the same Python builders, and
 `tests/test_trigger_export.py` checks that the exported pipeline equals the Python one and
 runs the Functions in Node with a fake `context`.
 
+The job Function does not add a fixed offset to UTC: it asks MongoDB for the window
+(`$dateTrunc`/`$dateSubtract` with `timezone: "America/Sao_Paulo"`), so the window stays right
+if daylight saving time returns (the cron would then fire at 04:10 local time). See
+[ADR 0001](docs/adr/0001-janela-do-trigger-no-servidor.md). `tests/test_live_trigger.py` runs
+the versioned `rodarJob.js` through mongosh against the `*_test` database and requires the
+same base as the Python job.
+
 **The triggers are not deployed in this demo.** The deploy needs an Atlas key with Project
 Owner on the cluster's project; `make trigger-deploy` stops and explains when the session
 lacks it. Without them, step 5 shows the planned schedule and says that, in this demo,
 the job runs from the step-3 button. See [`atlas-trigger/README.md`](atlas-trigger/README.md).
+When the last job is from another day, `GET /api/estado` returns `baseDefasadaDias`, every
+step shows a banner ("the base was generated for DD/MM/YYYY, N days ago"), and a default-window
+answer says which window the base really covers, until someone runs the job or resets.
 
 ## Resetting the demo
 
@@ -193,30 +202,50 @@ Same `--env-file` rule as above (`KEY=value`, no quotes); tags: `latest` and `sh
 pass (a quoted `MONGODB_URI` reaches the driver with the quotes and fails). No `.env` and no secret go into
 the image; everything is read from the environment at runtime.
 
+## Scale, measured
+
+`scripts/bench_escala.py` copies the raw collection k times on the server (same dates,
+k times the documents), runs the job and reads the server time from `explain`
+(`executionStats`), so network time is left out. One run on the shared Atlas M20 (9.0.7),
+2026-11-12; read the trend, not the millisecond:
+
+| Raw | Documents | Job | Ready base: keys read | Same question on the raw: keys read | Raw, server ms |
+|---|---|---|---|---|---|
+| 1× | 836 thousand | 17.8 s | 6 | 4,320 | 95 |
+| 2× | 1.67 million | 30.1 s | 6 | 8,640 | 331 |
+| 4× | 3.35 million | 47.3 s | 6 | 17,280 | 691 |
+
+The base keeps 29,962 documents and answers with 6 index keys at any volume; the raw grows
+linearly. The same raw as a **time series collection** takes ~10× less disk and index
+(18 MB against 180 MB) with the same job time (17.6 s). It stays a regular collection because
+ingestion deduplicates with `$merge` on the unique `{viagemId, seq}`, and time series has no
+unique index and is not a `$merge` target. See
+[ADR 0002](docs/adr/0002-raw-colecao-comum-e-escala-medida.md).
+
 ## Tests
 
-The same 107 tests run against both targets (2026-10-19): **MongoDB Atlas 9.0.4** (shared
-portfolio cluster) and **local Docker 8.0.34**.
+112 tests on **MongoDB Atlas 9.0.7** (shared portfolio cluster, 2026-11-12); the 107 of v2.3
+also ran on **local Docker 8.0.34** (2026-10-19).
 
 | File | Covers |
 |---|---|
 | `test_janela.py` | half-open window, today excluded, `$lt`, São Paulo time including a 2018 DST date, hour ranges across midnight, periods, next job |
 | `test_job.py` | today excluded, job idempotent, two overlapping runs lose nothing, a key that left the window is removed, `$isoDayOfWeek` at local midnight, rounding, masked errors in `job_runs` |
-| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, a specific vehicle goes to the raw even in the default window (key includes it, invalid vehicle → 422, saved until the next job, `docsExaminados` = what the index walks), absolute vs relative validity (an absolute period ending today expires at the next job), period without raw data (no `$merge` shown), partially outside retention (warning), raw docs read = first `$match` count, `geradoPor` = latest ok run |
+| `test_cenario.py` | base sum equals direct aggregation on the raw for random scenarios, Night range, every widening level, on-demand compute/persist/read-from-saved/expired, a specific vehicle goes to the raw even in the default window (key includes it, invalid vehicle → 422, saved until the next job, `docsExaminados` = what the index walks), absolute vs relative validity (an absolute period ending today expires at the next job), period without raw data (no `$merge` shown), partially outside retention (warning), raw docs read = first `$match` count, `geradoPor` = latest ok run, a base from another day answers with an `aviso` naming the window it covers |
 | `test_ingestao.py`, `test_previa.py` | ingestion moves only what already happened and never loses arrivals; tomorrow's preview |
 | `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, 15 vehicles per type spread over legs and hours, reset with per-batch progress; validators and indexes read from the database |
-| `test_trigger_export.py` | exported trigger pipelines equal the Python ones; Functions run in Node |
-| `test_api.py`, `test_operadores.py` | route contracts, vehicles per type in `/api/opcoes` (cache refreshed by a new job run), the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
+| `test_trigger_export.py` | exported trigger pipelines equal the Python ones; Functions run in Node; no fixed offset in the job Function |
+| `test_live_trigger.py` | the server-side window equals `janela_padrao` on São Paulo DST transition days; the versioned `rodarJob.js` runs through mongosh against the `*_test` database and leaves the same base as the Python job (same keys, sums, `lidos`/`gravados`, stale key removed) |
+| `test_api.py`, `test_operadores.py` | route contracts, `baseDefasadaDias`, vehicles per type in `/api/opcoes` (cache refreshed by a new job run), the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
 
 ## Limitations
 
-- Tested on a shared Atlas cluster (9.0.4) and local MongoDB 8.0; nothing with sharding or
-  with the customer's volume (the demo has ~836 thousand observations over 60 legs (4 bases × 12 stations, every base serves every station) and 15 vehicles per type).
-- The triggers are code-complete and tested offline, but not deployed.
+- Tested on a shared Atlas cluster (9.0.7) and local MongoDB 8.0; volume measured up to 4×
+  the demo (3.35 million observations, above); nothing with sharding or with the customer's volume (the demo has ~836 thousand observations over 60 legs (4 bases × 12 stations, every base serves every station) and 15 vehicles per type).
+- The triggers are not deployed (the deploy needs a Project Owner key). The job Function
+  runs against a real MongoDB through mongosh in the tests, not only in Node.
 - Simple mean and population standard deviation, outliers included.
 - The widening order for few samples and the hour shortcuts are proposals to validate.
-- The trigger Function uses a fixed UTC−3 offset; revise it and the cron if daylight saving
-  time returns to São Paulo.
 
 ## More
 

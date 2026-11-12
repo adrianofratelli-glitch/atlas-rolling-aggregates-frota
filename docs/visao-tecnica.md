@@ -175,19 +175,46 @@ quase todo ida e volta de rede, por isso a UI o chama de "ida e volta ao banco".
 
 App App Services `frota-eta-job` em `atlas-trigger/`, com dois Scheduled Triggers:
 `jobDiario` (cron UTC `10 6 * * *` = 03:10 em São Paulo) e `ingestaoSimulada` (`5 * * * *`).
-A Function do job calcula `dataRef` = hoje em São Paulo com deslocamento fixo de −3 h (sem
-horário de verão desde 2019), roda o mesmo pipeline e grava `job_runs` com origem
-`trigger`. `tests/test_trigger_export.py` garante que o template é igual ao pipeline Python
-e roda as Functions no node com `context` falso.
+A Function do job não usa offset fixo. Ela pede ao MongoDB a janela, o `dataRef` e o
+relógio do cluster numa ida só (`backend/frota/pipelines/job.py::janela_no_servidor`:
+`$dateTrunc`/`$dateSubtract` com `timezone: "America/Sao_Paulo"`, horário de verão
+incluído; ver `docs/adr/0001-janela-do-trigger-no-servidor.md`). Depois roda o mesmo pipeline
+e grava `job_runs` com origem `trigger`. `tests/test_trigger_export.py` garante que o
+template é igual ao pipeline Python e roda as Functions no node com `context` falso.
+`tests/test_live_trigger.py` roda o `rodarJob.js` versionado pelo mongosh contra o banco
+`*_test` e exige a mesma base do job Python.
 
 **Na demo os triggers não estão implantados**: o deploy exige chave com Project Owner no
 projeto do cluster. O passo 5 mostra o agendamento planejado e informa que o job roda pelo
 botão do passo 3. Implantação: `make trigger-deploy` (ver `atlas-trigger/README.md`).
 
+**Base defasada.** Sem trigger, a janela não anda sozinha: a base continua sendo a do último
+job. `GET /api/estado` devolve `baseDefasadaDias` (dias entre o `dataRef` do último job ok e
+hoje), e a UI mostra um banner até alguém rodar o job. Na janela padrão, a resposta de
+`POST /api/cenario` traz em `aviso` a janela que a base realmente cobre
+(`backend/frota/cenario.py::aviso_defasagem`).
+
+## Escala medida
+
+`scripts/bench_escala.py` (banco `frota_eta_escala_test`, apagado no fim) copia a raw k vezes
+no servidor, roda o job e mede as consultas com `explain` (`executionStats`). Uma execução
+no Atlas M20 compartilhado (9.0.7), em 2026-11-12:
+
+| Raw | Docs | Job | Base: chaves lidas (ms servidor) | Raw, mesma pergunta: chaves lidas (ms servidor) |
+|---|---|---|---|---|
+| 1× | 836 mil | 17,8 s | 6 (15) | 4.320 (95) |
+| 2× | 1,67 mi | 30,1 s | 6 (18) | 8.640 (331) |
+| 4× | 3,35 mi | 47,3 s | 6 (16) | 17.280 (691) |
+
+A raw (1×) em time series ocupa 13,9 + 3,8 MB (contra 43 + 136 MB), e o `$group` do job leva
+o mesmo tempo (17,6 s). Ela continua collection comum por causa da deduplicação com `$merge`
+no índice único `{viagemId, seq}`: time series não aceita índice único nem é destino de
+`$merge`. Decisão em `docs/adr/0002-raw-colecao-comum-e-escala-medida.md`.
+
 ## Compatibilidade de operadores
 
-Executado e testado (107 testes) em **MongoDB 8.0.34** (Docker, replica set de 1 nó) e
-**MongoDB 9.0.4** (Atlas). As versões mínimas são as da documentação.
+Executado e testado em **MongoDB 8.0.34** (Docker, replica set de 1 nó; 107 testes da v2.3) e
+**MongoDB 9.0.7** (Atlas; 112 testes na v2.4). As versões mínimas são as da documentação.
 
 | Operador / recurso | Uso | Disponível desde |
 |---|---|---|
@@ -195,6 +222,8 @@ Executado e testado (107 testes) em **MongoDB 8.0.34** (Docker, replica set de 1
 | `$merge` em collection existente, `on` com índice único | job, ingestão, salvo sob demanda | 4.2 |
 | `$round` | somas com 6 casas | 4.2 |
 | `$jsonSchema` validator | todas as collections | 3.6 |
+| `$dateTrunc`, `$dateSubtract` com `timezone` | janela da Function do trigger | 5.0 |
+| `$documents` dentro de `$unionWith` | um documento garantido no pipeline de janela | 6.0 |
 | TTL index | raw (200 dias), salvo (`expiraEm`) | — |
 
 O validator usa `$jsonSchema` draft 4, em que `exclusiveMinimum` é booleano.
@@ -219,14 +248,17 @@ local (27027); `FROTA_MONGO=local` força o local.
 - **Portal** (`pov-portfolio/povs.json`): `rolling-aggregates`, portas 5410/8410,
   `bash start.sh` (contrato do launcher: primeiro plano, derruba a árvore no SIGTERM).
 - **Portas**: reservadas em `PoVs/PORTS.md` (5410/8410 e 27027 do Docker local).
-- **Player**: a réplica offline `rolling` do `pov-demo-player` foi gravada da API 1.0.1 e
-  está **obsoleta**; precisa ser regravada para a v2.
+- **Player**: a réplica offline `rolling` do `pov-demo-player` foi regravada da API v2.3
+  em 2026-11-06.
 
 ## Limitações
 
 - Testado num cluster Atlas compartilhado e no MongoDB 8.0 local; nada com sharding nem
-  com o volume real do cliente (a demo tem ~836 mil observações em 60 trechos).
+  com o volume real do cliente (a demo tem ~836 mil observações em 60 trechos). A escala
+  1×/2×/4× da raw foi medida em `scripts/bench_escala.py` (ver "Escala medida").
 - Média simples e desvio populacional, outliers incluídos. `$median`/`$percentile` não se
   compõem entre horas a partir de soma e contagem.
-- Triggers com código pronto e testado fora do Atlas, mas não implantados.
-- A Function usa UTC−3 fixo; se o horário de verão voltar, revisar a constante e o cron.
+- Triggers não implantados (deploy exige chave Project Owner). A Function do job já roda
+  num MongoDB real pelo mongosh (`tests/test_live_trigger.py`), não só no node.
+- O cron é em UTC (`10 6 * * *`): se o horário de verão voltar, o job dispara às 04:10
+  locais, com a janela ainda certa (calculada no servidor).
