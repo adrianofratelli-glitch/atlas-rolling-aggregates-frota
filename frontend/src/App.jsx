@@ -145,8 +145,8 @@ export default function App() {
         {!estado.ultimoJob && passo !== 3 && (
           <p className="aviso">As médias ainda não foram geradas: rode o passo 3 ou <b>Resetar demo</b>.</p>
         )}
-        {estado.baseDefasadaDias > 0 && (
-          // sem trigger implantado a janela não anda sozinha: a base responde a janela do último job
+        {estado.baseDefasada && (
+          // base de outro dia (com trigger, ontem vale até o job das 03:10 rodar): a base responde a janela do último job
           <p className="aviso" role="status" data-testid="base-defasada">
             A base foi gerada para {dataIso(estado.ultimoJob.dataRef)}, {estado.baseDefasadaDias === 1 ? 'há 1 dia' : `há ${estado.baseDefasadaDias} dias`}:
             {' '}as médias cobrem a janela daquele dia, não a de hoje. {passo === 3 ? 'Rode o job abaixo' : <>Rode o passo 3 (<b>Gerar a base</b>)</>} ou <b>Resetar demo</b>.

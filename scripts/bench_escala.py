@@ -110,10 +110,16 @@ def medir_fator(fonte, k: int, agora: datetime) -> dict:
             "consultaRawJanela": explicar(db, RAW, raw_p)}
 
 
-def medir_time_series(fonte, agora: datetime) -> dict:
-    """A mesma raw (1×) numa time series collection: disco e o $group do job."""
+def medir_time_series(fonte, agora: datetime, repeticoes: int = 2) -> dict:
+    """A mesma raw (1×) numa time series collection, medida do mesmo jeito que a raw comum.
+
+    Só o aggregate do job (`$match` → `$set` → `$group` → `$project` → `$merge`), sem os
+    counts, a limpeza e o `job_runs` que o `rodar_job` acrescenta. Os dois gravam numa
+    collection de rascunho do banco de bench e rodam alternados (raw, ts, raw, ts…), para
+    que a carga do cluster compartilhado pese igual nos dois; vale a mediana.
+    """
     db = get_db(guardar_escrita(BENCH))
-    for nome in ("obs_ts", "base_ts"):
+    for nome in ("obs_ts", "base_ts", "base_raw"):
         db.drop_collection(nome)
     fonte[RAW].aggregate([
         {"$set": {"rota": {"origem": "$origem", "destino": "$destino",
@@ -123,29 +129,39 @@ def medir_time_series(fonte, agora: datetime) -> dict:
                   "timeseries": {"timeField": "observadoEm", "metaField": "rota",
                                  "granularity": "minutes"}}},
     ], allowDiskUse=True)
-    db.base_ts.create_index([(c, 1) for c in pl_job.CHAVE], unique=True)
+    for nome in ("base_ts", "base_raw"):
+        db[nome].create_index([(c, 1) for c in pl_job.CHAVE], unique=True)
     hoje = hoje_local(agora)
     ini, fim = janela_padrao(hoje)
-    p = estagios(pl_job.pipeline(ini, fim, hoje, "ts"))
+    p = estagios(pl_job.pipeline(ini, fim, hoje, "bench"))
+    p_raw = [*p[:-1], {"$merge": {**p[-1]["$merge"], "into": {"db": db.name, "coll": "base_raw"}}}]
     # na time series a rota está no metaField: volta para o formato da raw antes do $set
-    p = [p[0], {"$replaceWith": {"$mergeObjects": ["$$ROOT", "$rota"]}}, *p[1:]]
-    p[-1] = {"$merge": {**p[-1]["$merge"], "into": "base_ts"}}
-    t0 = time.perf_counter()
-    db.obs_ts.aggregate(p, allowDiskUse=True)
-    ms = round((time.perf_counter() - t0) * 1000, 1)
+    p_ts = [p[0], {"$replaceWith": {"$mergeObjects": ["$$ROOT", "$rota"]}}, *p[1:-1],
+            {"$merge": {**p[-1]["$merge"], "into": "base_ts"}}]
+    tempos: dict[str, list[float]] = {"raw": [], "ts": []}
+    for _ in range(repeticoes):
+        for nome, coll, pipe in (("raw", fonte[RAW], p_raw), ("ts", db.obs_ts, p_ts)):
+            t0 = time.perf_counter()
+            coll.aggregate(pipe, allowDiskUse=True)
+            tempos[nome].append(round((time.perf_counter() - t0) * 1000, 1))
     s = db.command("collStats", "obs_ts")
-    return {"obsTs": {"discoMB": round(s["storageSize"] / 1e6, 1),
-                      "indicesMB": round(s["totalIndexSize"] / 1e6, 1),
-                      "buckets": s.get("timeseries", {}).get("bucketCount")},
-            "jobMs": ms, "gravados": db.base_ts.count_documents({}),
-            "explainGroup": explicar(db, "obs_ts", p[:-1])}
+    return {"repeticoes": repeticoes,
+            "raw": {**tamanho(fonte, RAW), "aggregateMs": tempos["raw"],
+                    "medianaMs": statistics.median(tempos["raw"]),
+                    "gravados": db.base_raw.count_documents({})},
+            "ts": {"discoMB": round(s["storageSize"] / 1e6, 1),
+                   "indicesMB": round(s["totalIndexSize"] / 1e6, 1),
+                   "buckets": s.get("timeseries", {}).get("bucketCount"),
+                   "aggregateMs": tempos["ts"], "medianaMs": statistics.median(tempos["ts"]),
+                   "gravados": db.base_ts.count_documents({})}}
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--fonte", required=True, help="banco *_test já semeado (make seed DB=...)")
-    ap.add_argument("--fatores", type=int, nargs="+", default=[1, 2, 4])
-    ap.add_argument("--ts", action="store_true", help="também mede a raw em time series (1×)")
+    ap.add_argument("--fatores", type=int, nargs="*", default=[1, 2, 4],
+                    help="vazio (`--fatores`) mede só a time series, com --ts")
+    ap.add_argument("--ts", action="store_true", help="também mede a raw em time series (1×), do mesmo jeito que a raw comum")
     ap.add_argument("--manter", action="store_true", help="não apaga o banco de bench no fim")
     a = ap.parse_args()
     fonte = get_db(guardar_escrita(a.fonte))  # só lê; a guarda impede apontar para a demo

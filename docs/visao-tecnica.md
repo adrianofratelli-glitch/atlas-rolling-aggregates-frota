@@ -190,7 +190,8 @@ botão do passo 3. Implantação: `make trigger-deploy` (ver `atlas-trigger/READ
 
 **Base defasada.** Sem trigger, a janela não anda sozinha: a base continua sendo a do último
 job. `GET /api/estado` devolve `baseDefasadaDias` (dias entre o `dataRef` do último job ok e
-hoje), e a UI mostra um banner até alguém rodar o job. Na janela padrão, a resposta de
+hoje) e `baseDefasada`, e a UI mostra um banner até alguém rodar o job. Com o trigger
+implantado, a base de ontem é a esperada até as 03:10 + 30 min (`settings.MARGEM_JOB_MIN`). Na janela padrão, a resposta de
 `POST /api/cenario` traz em `aviso` a janela que a base realmente cobre
 (`backend/frota/cenario.py::aviso_defasagem`).
 
@@ -206,15 +207,16 @@ no Atlas M20 compartilhado (9.0.7), em 2026-11-12:
 | 2× | 1,67 mi | 30,1 s | 6 (18) | 8.640 (331) |
 | 4× | 3,35 mi | 47,3 s | 6 (16) | 17.280 (691) |
 
-A raw (1×) em time series ocupa 13,9 + 3,8 MB (contra 43 + 136 MB), e o `$group` do job leva
-o mesmo tempo (17,6 s). Ela continua collection comum por causa da deduplicação com `$merge`
+O job cresce abaixo do linear (2,7× o tempo para 4× os dados). A raw (1×) em time series
+ocupa 13,2 + 2,2 MB (contra 47,2 + 135 MB), mas o mesmo aggregate do job, medido igual e
+alternado com a raw comum, foi 15–35% mais lento nela (`--fatores --ts`). Ela continua collection comum por causa da deduplicação com `$merge`
 no índice único `{viagemId, seq}`: time series não aceita índice único nem é destino de
 `$merge`. Decisão em `docs/adr/0002-raw-colecao-comum-e-escala-medida.md`.
 
 ## Compatibilidade de operadores
 
 Executado e testado em **MongoDB 8.0.34** (Docker, replica set de 1 nó; 107 testes da v2.3) e
-**MongoDB 9.0.7** (Atlas; 112 testes na v2.4). As versões mínimas são as da documentação.
+**MongoDB 9.0.7** (Atlas; 114 testes na v2.4). As versões mínimas são as da documentação.
 
 | Operador / recurso | Uso | Disponível desde |
 |---|---|---|

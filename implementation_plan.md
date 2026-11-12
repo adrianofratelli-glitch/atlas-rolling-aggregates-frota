@@ -33,7 +33,7 @@ A v1.0.1 (desenho simples e incremental, 6 abas) segue em `main` e nas tags v1.0
     num MongoDB real pelo mongosh (`tests/test_live_trigger.py`).
 14. Escala medida em 1×/2×/4× e raw em time series (`scripts/bench_escala.py`, ADR 0002).
 
-112 testes no Atlas (9.0.7) em 2026-11-12.
+114 testes no Atlas (9.0.7) em 2026-11-12.
 
 ## Não feito / próximos passos
 

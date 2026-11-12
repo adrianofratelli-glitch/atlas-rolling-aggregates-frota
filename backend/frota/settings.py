@@ -25,6 +25,8 @@ JOB_HORA_LOCAL = (3, 10)
 # 03:10 em America/Sao_Paulo (UTC-3) e ingestão simulada de hora em hora
 CRON_JOB_UTC = "10 6 * * *"
 CRON_INGESTAO_UTC = "5 * * * *"
+# com trigger implantado, a base de ontem ainda é a esperada até o job das 03:10 terminar
+MARGEM_JOB_MIN = 30
 
 # ---- alvo e bancos ----------------------------------------------------------
 MONGODB_URI_LOCAL = os.getenv("MONGODB_URI_LOCAL", "mongodb://localhost:27027/?replicaSet=rs0")
@@ -42,3 +44,8 @@ MONGODB_DB = os.getenv("MONGODB_DB", "frota_eta")
 MONGODB_TEST_DB = os.getenv("MONGODB_TEST_DB", "frota_eta_test")
 BACKEND_PORT = int(os.getenv("BACKEND_PORT", "8410"))
 SEED = int(os.getenv("SEED", "42"))
+
+
+def trigger_implantado() -> bool:
+    """Trigger no ar: alvo Atlas e o ID do app App Services gravado pelo `make trigger-deploy`."""
+    return ALVO == "atlas" and bool(os.getenv("APPSERVICES_APP_ID", "").strip())

@@ -12,7 +12,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -33,6 +33,8 @@ UTC = timezone.utc
 def _instantes_dst() -> list[datetime]:
     """Viradas do horário de verão de São Paulo (2017–2019) e vizinhança, mais dias comuns."""
     dias = [(2017, 10, 15), (2018, 2, 18), (2018, 11, 4), (2019, 2, 17),  # viradas
+            # 180 dias depois de uma virada: o INÍCIO da janela cai no dia sem 00:00
+            (2018, 4, 13), (2019, 5, 3),
             (2018, 4, 23), (2019, 8, 16), (2026, 11, 12), (2026, 3, 1)]
     return [datetime(a, m, d, h, mi, tzinfo=UTC)
             for a, m, d in dias for h, mi in ((1, 59), (2, 0), (3, 0), (3, 1), (6, 10), (23, 30))]
@@ -47,6 +49,44 @@ def test_janela_no_servidor_igual_ao_python(db):
         ini, fim = janela_padrao(ref)
         assert (r[0]["inicio"], r[0]["fim"], r[0]["dataRef"]) == (ini, fim, ref.isoformat()), agora
         assert abs((r[0]["t"] - datetime.now(UTC)).total_seconds()) < 300
+
+
+def _trocar_agora(o, campo: str):
+    """O `$project` do builder com `agora` trocado por um campo do documento."""
+    if isinstance(o, datetime):
+        return campo
+    if isinstance(o, dict):
+        return {k: _trocar_agora(v, campo) for k, v in o.items()}
+    if isinstance(o, list):
+        return [_trocar_agora(v, campo) for v in o]
+    return o
+
+
+def test_varredura_2008_2019_igual_ao_python(db):
+    """Todo dia de 2008–2019 (anos com horário de verão em SP), 7 horários por dia.
+
+    Usa o mesmo `$project` de `janela_no_servidor`, com `agora` vindo de cada documento de um
+    `$documents`: 30.681 instantes em 7 idas ao servidor. Sem o segundo `$dateTrunc`, os dias
+    em que o início da janela cai numa virada (ex.: 2018-04-13, 2019-05-03) divergiam.
+    """
+    proj = _trocar_agora(estagios(pl_job.janela_no_servidor(datetime(2000, 1, 1, tzinfo=UTC)))[2]
+                         ["$project"], "$a")
+    proj["a"] = 1
+    inst, d = [], datetime(2008, 1, 1, tzinfo=UTC)
+    while d < datetime(2020, 1, 1, tzinfo=UTC):
+        inst += [d.replace(hour=h, minute=m)
+                 for h, m in ((1, 59), (2, 0), (2, 59), (3, 0), (3, 1), (6, 10), (23, 30))]
+        d += timedelta(days=1)
+    divergentes, total = [], 0
+    for i in range(0, len(inst), 5000):
+        for x in db.aggregate([{"$documents": [{"a": a} for a in inst[i:i + 5000]]},
+                               {"$project": proj}]):
+            ref = hoje_local(x["a"])
+            total += 1
+            if (x["inicio"], x["fim"], x["dataRef"]) != (*janela_padrao(ref), ref.isoformat()):
+                divergentes.append(x["a"])
+    assert total == len(inst) == 30681
+    assert divergentes == []
 
 
 def _sem_run(d: dict) -> dict:

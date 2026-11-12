@@ -141,7 +141,8 @@ same base as the Python job.
 Owner on the cluster's project; `make trigger-deploy` stops and explains when the session
 lacks it. Without them, step 5 shows the planned schedule and says that, in this demo,
 the job runs from the step-3 button. See [`atlas-trigger/README.md`](atlas-trigger/README.md).
-When the last job is from another day, `GET /api/estado` returns `baseDefasadaDias`, every
+When the last job is from another day, `GET /api/estado` returns `baseDefasadaDias` and
+`baseDefasada` (with the trigger deployed, yesterday's base is expected until 03:10 + 30 min), every
 step shows a banner ("the base was generated for DD/MM/YYYY, N days ago"), and a default-window
 answer says which window the base really covers, until someone runs the job or resets.
 
@@ -216,15 +217,17 @@ k times the documents), runs the job and reads the server time from `explain`
 | 4× | 3.35 million | 47.3 s | 6 | 17,280 | 691 |
 
 The base keeps 29,962 documents and answers with 6 index keys at any volume; the raw grows
-linearly. The same raw as a **time series collection** takes ~10× less disk and index
-(18 MB against 180 MB) with the same job time (17.6 s). It stays a regular collection because
+linearly; the job grows below linear (2.7× the time for 4× the data). The same raw as a
+**time series collection** takes ~12× less disk and index (15 MB against 182 MB), but the
+same job aggregate, timed the same way and alternated with the regular raw, was 15–35% slower
+on time series (bucket unpacking). It stays a regular collection because
 ingestion deduplicates with `$merge` on the unique `{viagemId, seq}`, and time series has no
 unique index and is not a `$merge` target. See
 [ADR 0002](docs/adr/0002-raw-colecao-comum-e-escala-medida.md).
 
 ## Tests
 
-112 tests on **MongoDB Atlas 9.0.7** (shared portfolio cluster, 2026-11-12); the 107 of v2.3
+114 tests on **MongoDB Atlas 9.0.7** (shared portfolio cluster, 2026-11-12); the 107 of v2.3
 also ran on **local Docker 8.0.34** (2026-10-19).
 
 | File | Covers |
@@ -236,7 +239,7 @@ also ran on **local Docker 8.0.34** (2026-10-19).
 | `test_seed.py`, `test_bootstrap.py` | deterministic generator, coverage, sparse legs, 15 vehicles per type spread over legs and hours, reset with per-batch progress; validators and indexes read from the database |
 | `test_trigger_export.py` | exported trigger pipelines equal the Python ones; Functions run in Node; no fixed offset in the job Function |
 | `test_live_trigger.py` | the server-side window equals `janela_padrao` on São Paulo DST transition days; the versioned `rodarJob.js` runs through mongosh against the `*_test` database and leaves the same base as the Python job (same keys, sums, `lidos`/`gravados`, stale key removed) |
-| `test_api.py`, `test_operadores.py` | route contracts, `baseDefasadaDias`, vehicles per type in `/api/opcoes` (cache refreshed by a new job run), the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
+| `test_api.py`, `test_operadores.py` | route contracts, `baseDefasadaDias`/`baseDefasada` (one day tolerated with the trigger until the job time), vehicles per type in `/api/opcoes` (cache refreshed by a new job run), the `query` block, `ultimoJob` = latest ok run with errors apart, preview cache, 409 during reset, 422 on bad input, 503 without host, every operator explanation ends with a period |
 
 ## Limitations
 

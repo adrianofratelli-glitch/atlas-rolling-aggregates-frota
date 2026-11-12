@@ -29,7 +29,9 @@ from .pipelines import cenario as pl
 from .pipelines import comentados, estagios
 from .pipelines import job as job_pl
 from .schemas import TIPOS_VEICULO
-from .settings import MIN_AMOSTRAS, TTL_RAW_DIAS, TTL_SALVO_MAX_DIAS, TTL_SALVO_PADRAO_DIAS, TZ
+from . import settings
+from .settings import (JOB_HORA_LOCAL, MARGEM_JOB_MIN, MIN_AMOSTRAS, TTL_RAW_DIAS,
+                       TTL_SALVO_MAX_DIAS, TTL_SALVO_PADRAO_DIAS, TZ)
 
 UTC = timezone.utc
 _TZ = ZoneInfo(TZ)
@@ -173,10 +175,30 @@ def defasagem_dias(run: dict | None, agora: datetime) -> int | None:
     return (hoje_local(agora) - date.fromisoformat(run["dataRef"])).days
 
 
-def aviso_defasagem(run: dict | None, agora: datetime) -> str | None:
+def base_defasada(run: dict | None, agora: datetime, trigger_implantado: bool) -> bool:
+    """A base não é a que deveria estar lá agora.
+
+    Sem trigger, qualquer dia de atraso conta: nada vai rodar o job sozinho. Com trigger,
+    entre a meia-noite e o horário do job (mais `MARGEM_JOB_MIN` para ele terminar) a base
+    de ontem é a esperada: o job de hoje ainda não rodou.
+    """
     dias = defasagem_dias(run, agora)
     if not dias or dias <= 0:
+        return False
+    if trigger_implantado and dias == 1:
+        local = agora.astimezone(_TZ)
+        hh, mm = JOB_HORA_LOCAL
+        limite = local.replace(hour=hh, minute=mm, second=0, microsecond=0) \
+            + timedelta(minutes=MARGEM_JOB_MIN)
+        return local >= limite
+    return True
+
+
+def aviso_defasagem(run: dict | None, agora: datetime,
+                    trigger_implantado: bool = False) -> str | None:
+    if not base_defasada(run, agora, trigger_implantado):
         return None
+    dias = defasagem_dias(run, agora)
     ini, fim = janela_padrao(date.fromisoformat(run["dataRef"]))
     ultimo = hoje_local(fim - timedelta(seconds=1))
     plural = "dia" if dias == 1 else "dias"
@@ -185,9 +207,12 @@ def aviso_defasagem(run: dict | None, agora: datetime) -> str | None:
             f"{_ddmm(ini)} a {ultimo:%d/%m}, não a janela de hoje; rode o job (passo 3)")
 
 
-def _gerado_por(db: Database, agora: datetime) -> dict:
-    """O pipeline do último job que deu certo: é ele que produziu a base que está lá."""
-    run = db.job_runs.find_one({"status": "ok"}, sort=[("iniciadoEm", -1)])
+def _ultimo_run_ok(db: Database) -> dict | None:
+    return db.job_runs.find_one({"status": "ok"}, sort=[("iniciadoEm", -1)])
+
+
+def _gerado_por(run: dict | None, agora: datetime) -> dict:
+    """O pipeline do último job que deu certo (`run`): é ele que produziu a base que está lá."""
     if run:
         ref = date.fromisoformat(run["dataRef"])
         ini, fim = janela_padrao(ref)
@@ -228,9 +253,9 @@ def _da_base(db: Database, f: Filtro, agora: datetime) -> dict:
         nivel = "sem_historico"
     ms = round((time.perf_counter() - t0) * 1000, 1)
     query = bloco_query(pl.BASE, comentados(p), [pl.BASE], [], rodape=RODAPE_CONTA)
-    gerado = _gerado_por(db, agora)
-    run = db.job_runs.find_one({"status": "ok"}, {"dataRef": 1}, sort=[("iniciadoEm", -1)])
-    defasada = aviso_defasagem(run, agora)
+    run = _ultimo_run_ok(db)  # uma leitura só: alimenta o "como foi gerada" e o aviso
+    gerado = _gerado_por(run, agora)
+    defasada = aviso_defasagem(run, agora, settings.trigger_implantado())
     if nivel == "sem_historico":
         avisos = [f"menos de {MIN_AMOSTRAS} amostras mesmo ampliando", defasada]
         return _resposta("job_diario", _DETALHE_BASE[nivel], query, origem="base", nivel=nivel,

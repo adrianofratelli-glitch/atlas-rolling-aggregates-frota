@@ -24,7 +24,12 @@
   DST transition days.
 - **Scale measured**: `scripts/bench_escala.py` copies the raw collection k times on the server,
   runs the job and explains the queries (ready base vs raw), and measures the raw as a time
-  series collection. Numbers and decision in the README and in ADR 0002.
+  series collection with the same job aggregate, alternated with the regular raw (~12× less
+  disk, 15–35% slower job). Numbers and decision in the README and in ADR 0002.
+- The stale-base banner tolerates one day of lag when the trigger is deployed, until the
+  03:10 job (+30 min) has had time to run (`cenario.base_defasada`, `/api/estado.baseDefasada`).
+- `tests/test_live_trigger.py` sweeps the 30,681 instants of 2008–2019 against
+  `janela_padrao`, including window starts on DST transition days.
 
 ## 2.3.0 (2026-10-19)
 

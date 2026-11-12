@@ -267,7 +267,8 @@ def test_absoluto_ate_hoje_expira_no_proximo_job(db):
     assert db.consultas_salvas.find_one()["expiraEm"] == proximo_job(AGORA)
 
 
-def test_gerado_por_usa_ultimo_run_ok(db):
+def test_gerado_por_usa_ultimo_run_ok(db, monkeypatch):
+    monkeypatch.setattr(cenario.settings, "trigger_implantado", lambda: False)
     ontem = HOJE - timedelta(days=1)
     ini, fim = janela_padrao(ontem)
     depois = AGORA + timedelta(hours=1)
@@ -279,7 +280,10 @@ def test_gerado_por_usa_ultimo_run_ok(db):
          "status": "erro", "dataRef": HOJE.isoformat(), "iniciadoEm": depois + timedelta(hours=1),
          "erro": "x"}])
     try:
-        g = cenario.consultar(db, _filtro(_regulares(db)[0]), AGORA)["geradoPor"]
+        r = cenario.consultar(db, _filtro(_regulares(db)[0]), AGORA)
+        g = r["geradoPor"]
+        # o mesmo run (uma leitura só) alimenta o "como foi gerada" e o aviso de defasagem
+        assert r["aviso"].startswith("base de 1 dia atrás") and ontem.strftime("%d/%m/%Y") in r["aviso"]
         assert "run-ok-teste" in g["mongosh"] and "run-erro-teste" not in g["mongosh"]
         assert "pendente" not in g["mongosh"]
         assert ini.strftime("%Y-%m-%dT%H:%M") in g["mongosh"]
@@ -365,3 +369,21 @@ def test_base_defasada_avisa_na_resposta(db):
     assert tarde["aviso"].startswith("base de 3 dias atrás")
     # o número continua o da base (é ela que está lá); o aviso é que muda
     assert tarde["resultado"]["n"] == em_dia["resultado"]["n"]
+
+
+def test_base_defasada_tolera_ontem_ate_o_job_com_trigger():
+    run = {"dataRef": "2026-11-11"}
+    def sp(h, m):  # h:m local de 12/11/2026 em São Paulo (UTC−3)
+        return datetime(2026, 11, 12, 3, tzinfo=timezone.utc) + timedelta(hours=h, minutes=m)
+    # sem trigger nada roda sozinho: um dia de atraso já é base velha
+    assert cenario.base_defasada(run, sp(1, 0), trigger_implantado=False) is True
+    # com trigger: até 03:10 + margem de 30 min, a base de ontem é a esperada
+    assert cenario.base_defasada(run, sp(1, 0), trigger_implantado=True) is False
+    assert cenario.base_defasada(run, sp(3, 39), trigger_implantado=True) is False
+    assert cenario.base_defasada(run, sp(3, 40), trigger_implantado=True) is True
+    assert cenario.aviso_defasagem(run, sp(2, 0), trigger_implantado=True) is None
+    assert cenario.aviso_defasagem(run, sp(4, 0), trigger_implantado=True).startswith("base de 1 dia")
+    # dois dias, ou em dia, não dependem do trigger
+    assert cenario.base_defasada({"dataRef": "2026-11-10"}, sp(1, 0), True) is True
+    assert cenario.base_defasada({"dataRef": "2026-11-12"}, sp(23, 0), False) is False
+    assert cenario.base_defasada(None, sp(1, 0), False) is False

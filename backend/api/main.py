@@ -6,7 +6,6 @@
 """
 from __future__ import annotations
 
-import os
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -128,14 +127,16 @@ def estado():
     recente = d.job_runs.find_one({}, sort=[("iniciadoEm", -1)])
     erro = recente if recente and recente.get("status") != "ok" else None
     hh, mm = settings.JOB_HORA_LOCAL
+    implantado = settings.trigger_implantado()
     return J({"alvo": settings.ALVO, "agora": agora, "dataRef": data_ref.isoformat(),
               "janela": {"inicio": ini, "fim": fim, "dias": settings.JANELA_DIAS},
               "ultimoJob": ultimo, "ultimoErro": erro, "simuladoAte": ingestao.simulado_ate(d),
               # dias que a base está atrás de hoje: sem trigger a janela não anda sozinha
               "baseDefasadaDias": cenario.defasagem_dias(ultimo, agora),
+              # com trigger, ontem é esperado até o job das 03:10 (+ margem) rodar
+              "baseDefasada": cenario.base_defasada(ultimo, agora, implantado),
               "resetando": _resetando(),
-              "trigger": {"implantado": settings.ALVO == "atlas"
-                          and bool(os.getenv("APPSERVICES_APP_ID", "").strip()),
+              "trigger": {"implantado": implantado,
                           "horarioLocal": f"{hh:02d}:{mm:02d}",
                           "cron": settings.CRON_JOB_UTC,
                           "ingestaoCron": settings.CRON_INGESTAO_UTC}})

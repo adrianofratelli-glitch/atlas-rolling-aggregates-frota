@@ -258,8 +258,20 @@ def test_veiculos_cache_sem_corrida(semeado, monkeypatch):
 
 
 def test_estado_base_defasada(cli, monkeypatch):
-    from datetime import timedelta
-    assert cli.get("/api/estado").json()["baseDefasadaDias"] == 0
+    from datetime import datetime, time, timedelta
+    from zoneinfo import ZoneInfo
+    monkeypatch.setattr(settings, "trigger_implantado", lambda: False)
+    e = cli.get("/api/estado").json()
+    assert e["baseDefasadaDias"] == 0 and e["baseDefasada"] is False
     real = main.agora_utc()
     monkeypatch.setattr(main, "agora_utc", lambda: real + timedelta(days=2))
-    assert cli.get("/api/estado").json()["baseDefasadaDias"] == 2
+    e = cli.get("/api/estado").json()
+    assert e["baseDefasadaDias"] == 2 and e["baseDefasada"] is True
+    # com trigger: amanhã às 02:00 local o job do dia ainda não rodou, ontem é o esperado
+    sp = ZoneInfo(settings.TZ)
+    amanha_2h = datetime.combine(real.astimezone(sp).date() + timedelta(days=1), time(2, 0), sp)
+    monkeypatch.setattr(main, "agora_utc", lambda: amanha_2h)
+    monkeypatch.setattr(settings, "trigger_implantado", lambda: True)
+    e = cli.get("/api/estado").json()
+    assert e["baseDefasadaDias"] == 1 and e["baseDefasada"] is False
+    assert e["trigger"]["implantado"] is True
