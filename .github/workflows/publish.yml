@@ -51,5 +51,6 @@ jobs:
             org.opencontainers.image.source=https://github.com/adrianofratelli-glitch/atlas-rolling-aggregates-frota
             org.opencontainers.image.description=${{ github.event.repository.description }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
           cache-from: type=gha
           cache-to: type=gha,mode=max
