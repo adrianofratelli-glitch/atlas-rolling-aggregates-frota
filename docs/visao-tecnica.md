@@ -184,9 +184,10 @@ template é igual ao pipeline Python e roda as Functions no node com `context` f
 `tests/test_live_trigger.py` roda o `rodarJob.js` versionado pelo mongosh contra o banco
 `*_test` e exige a mesma base do job Python.
 
-**Na demo os triggers não estão implantados**: o deploy exige chave com Project Owner no
-projeto do cluster. O passo 5 mostra o agendamento planejado e informa que o job roda pelo
-botão do passo 3. Implantação: `make trigger-deploy` (ver `atlas-trigger/README.md`).
+**Na demo os triggers estão implantados (2026-11-13)**: job diário às 03:10 (São Paulo) e ingestão
+simulada de hora em hora; com `APPSERVICES_APP_ID` no `.env`, o passo 5 os mostra como implantados.
+Reimplantar exige chave com Project Owner no projeto do cluster: `make trigger-deploy` (ver
+`atlas-trigger/README.md`).
 
 **Base defasada.** Sem trigger, a janela não anda sozinha: a base continua sendo a do último
 job. `GET /api/estado` devolve `baseDefasadaDias` (dias entre o `dataRef` do último job ok e
@@ -260,7 +261,7 @@ local (27027); `FROTA_MONGO=local` força o local.
   1×/2×/4× da raw foi medida em `scripts/bench_escala.py` (ver "Escala medida").
 - Média simples e desvio populacional, outliers incluídos. `$median`/`$percentile` não se
   compõem entre horas a partir de soma e contagem.
-- Triggers não implantados (deploy exige chave Project Owner). A Function do job já roda
-  num MongoDB real pelo mongosh (`tests/test_live_trigger.py`), não só no node.
+- Triggers implantados só no projeto da demo (reimplantar exige chave Project Owner). A Function do
+  job também roda num MongoDB real pelo mongosh (`tests/test_live_trigger.py`), não só no node.
 - O cron é em UTC (`10 6 * * *`): se o horário de verão voltar, o job dispara às 04:10
   locais, com a janela ainda certa (calculada no servidor).

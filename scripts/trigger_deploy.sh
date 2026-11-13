@@ -88,22 +88,49 @@ cp -R "$RAIZ/atlas-trigger/." "$TMP/app"
 rm -f "$TMP/app/README.md"
 sed -i.bak "s/\${ATLAS_CLUSTER_NAME}/$CLUSTER/" "$TMP/app/data_sources/mongodb-atlas/config.json"
 rm -f "$TMP/app/data_sources/mongodb-atlas/config.json.bak"
+# appservices CLI 2.x só reconhece o formato 20230101: metadados em .mdb/meta.json, sem config_version
+# no root_config.json, e um arquivo de ambiente.
+"$PY" - "$TMP/app" <<'PYEOF'
+import json, os, sys
+app = sys.argv[1]
+raiz = os.path.join(app, "root_config.json")
+cfg = json.load(open(raiz))
+cfg.pop("config_version", None)
+json.dump(cfg, open(raiz, "w"), indent=2)
+os.makedirs(os.path.join(app, ".mdb"), exist_ok=True)
+json.dump({"config_version": 20230101, "app_id": "", "group_id": "", "last_pulled": 0},
+          open(os.path.join(app, ".mdb", "meta.json"), "w"), indent=2)
+os.makedirs(os.path.join(app, "environments"), exist_ok=True)
+amb = os.path.join(app, "environments", "no-environment.json")
+if not os.path.exists(amb):
+    json.dump({"values": {}}, open(amb, "w"), indent=2)
+PYEOF
 
 # 4. Push: atualiza o app existente ou cria o app na primeira vez.
+id_do_app() {  # Client App ID do app frota-eta-job no projeto (CLI 2.x: {"data": [{"Client App ID": ...}]})
+  appservices apps list --project "$PROJETO" -f json 2>/dev/null | "$PY" -c '
+import json, sys
+d = json.load(sys.stdin)
+apps = d.get("data", d.get("doc", [])) if isinstance(d, dict) else d
+for a in apps if isinstance(apps, list) else []:
+    if not isinstance(a, dict):
+        continue
+    cid = a.get("Client App ID") or a.get("client_app_id") or a.get("clientAppId") or ""
+    if a.get("name") == "frota-eta-job" or cid.startswith("frota-eta-job-"):
+        print(cid); break
+' || true
+}
+if [ -z "$APP_ID" ]; then
+  APP_ID="$(id_do_app)"
+  [ -n "$APP_ID" ] && gravar APPSERVICES_APP_ID "$APP_ID" && echo "app já existia; APPSERVICES_APP_ID gravado no .env"
+fi
 if [ -n "$APP_ID" ]; then
   echo "atualizando o app $APP_NOME..."
   appservices push --local "$TMP/app" --remote "$APP_ID" --yes 2>&1 | mascarar
 else
   echo "criando o app $APP_NOME..."
   appservices push --local "$TMP/app" --remote "$APP_NOME" --project "$PROJETO" --yes 2>&1 | mascarar
-  APP_ID="$(appservices apps list --project "$PROJETO" -f json 2>/dev/null | "$PY" -c '
-import json, sys
-d = json.load(sys.stdin)
-apps = d.get("doc", d) if isinstance(d, dict) else d
-for a in apps if isinstance(apps, list) else []:
-    if isinstance(a, dict) and a.get("name") == "frota-eta-job":
-        print(a.get("client_app_id") or a.get("clientAppId") or ""); break
-' || true)"
+  APP_ID="$(id_do_app)"
   if [ -z "$APP_ID" ]; then
     echo "aviso: não consegui ler o ID do app; preencha APPSERVICES_APP_ID no .env" >&2
   else

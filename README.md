@@ -137,10 +137,12 @@ if daylight saving time returns (the cron would then fire at 04:10 local time). 
 the versioned `rodarJob.js` through mongosh against the `*_test` database and requires the
 same base as the Python job.
 
-**The triggers are not deployed in this demo.** The deploy needs an Atlas key with Project
-Owner on the cluster's project; `make trigger-deploy` stops and explains when the session
-lacks it. Without them, step 5 shows the planned schedule and says that, in this demo,
-the job runs from the step-3 button. See [`atlas-trigger/README.md`](atlas-trigger/README.md).
+**The triggers are deployed in the demo project (2026-11-13)**: `make trigger-deploy` created the
+App Services app with the daily job (03:10 São Paulo) and the hourly simulated ingestion; with
+`APPSERVICES_APP_ID` in `.env`, step 5 reports them as deployed. The deploy needs an Atlas key with
+Project Owner on the cluster's project (exported as `MONGODB_ATLAS_PUBLIC_API_KEY`/`PRIVATE`); without it,
+`make trigger-deploy` stops and explains. The script converts the versioned app to the format the
+appservices CLI 2.x expects and reuses an existing app. See [`atlas-trigger/README.md`](atlas-trigger/README.md).
 When the last job is from another day, `GET /api/estado` returns `baseDefasadaDias` and
 `baseDefasada` (with the trigger deployed, yesterday's base is expected until 03:10 + 30 min), every
 step shows a banner ("the base was generated for DD/MM/YYYY, N days ago"), and a default-window
@@ -245,8 +247,8 @@ also ran on **local Docker 8.0.34** (2026-10-19).
 
 - Tested on a shared Atlas cluster (9.0.7) and local MongoDB 8.0; volume measured up to 4×
   the demo (3.35 million observations, above); nothing with sharding or with the customer's volume (the demo has ~836 thousand observations over 60 legs (4 bases × 12 stations, every base serves every station) and 15 vehicles per type).
-- The triggers are not deployed (the deploy needs a Project Owner key). The job Function
-  runs against a real MongoDB through mongosh in the tests, not only in Node.
+- The triggers are deployed only in the demo project (needs a Project Owner key to redeploy). The job
+  Function also runs against a real MongoDB through mongosh in the tests, not only in Node.
 - Simple mean and population standard deviation, outliers included.
 - The widening order for few samples and the hour shortcuts are proposals to validate.
 
